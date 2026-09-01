@@ -1,0 +1,245 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model SiteProfile {
+  id        String   @id @default(uuid())
+  nickname  String   @default("")
+  avatarUrl String   @default("")
+  biography String   @default("")
+  socialLinks String @default("[]")
+  learningDynamics String @default("[]")
+  updatedAt DateTime @updatedAt
+}
+
+model SiteSettings {
+  id                      String @id @default(uuid())
+  commentCooldownSeconds  Int    @default(600)
+  commentMinLength        Int    @default(2)
+  commentMaxLength        Int    @default(2000)
+  commentBodyMaxBytes     Int    @default(10000)
+  autoBanWarningThreshold  Int    @default(3)
+  allowRegexOnlyOnLlmFailure Boolean @default(false)
+  aboutNotes   String?
+  aboutContacts String?
+  llmProviders String?
+  updatedAt DateTime @updatedAt
+}
+
+model Article {
+  id          String   @id @default(uuid())
+  slug        String   @unique
+  sourcePath  String   @default("")
+  title       String
+  summary     String   @default("")
+  status      String   @default("draft")
+  category    String   @default("")
+  cover       String   @default("")
+  pinned      Boolean  @default(false)
+  publishedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  sourceCommitSha   String @default("")
+  sourceContentHash String @default("")
+  lastSyncedAt      DateTime?
+  plainTextCache    String  @default("")
+  archivedAt  DateTime?
+  viewCount   Int      @default(0)
+
+  tags       ArticleTag[]
+  comments   Comment[]
+  versions   ArticleVersion[]
+  viewDedups ArticleViewDedup[]
+}
+
+model ArticleVersion {
+  id         String   @id @default(uuid())
+  articleId  String
+  commitSha  String
+  contentHash String
+  source     String   @default("")
+  action     String   @default("save")
+  adminId    String
+  createdAt  DateTime @default(now())
+
+  article Article @relation(fields: [articleId], references: [id])
+}
+
+model Tag {
+  id   String @id @default(uuid())
+  name String @unique
+  slug String @unique
+
+  articles ArticleTag[]
+}
+
+model Category {
+  id   String @id @default(uuid())
+  name String @unique
+  slug String @unique
+}
+
+model ArticleTag {
+  articleId String
+  tagId     String
+
+  article Article @relation(fields: [articleId], references: [id])
+  tag     Tag     @relation(fields: [tagId], references: [id])
+
+  @@id([articleId, tagId])
+}
+
+model AdminUser {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  passwordHash String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  lastLoginAt  DateTime?
+}
+
+model AdminSession {
+  id        String    @id @default(uuid())
+  tokenHash String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  lastSeenAt DateTime @default(now())
+}
+
+model Comment {
+  id              String   @id @default(uuid())
+  articleId       String
+  bodyText        String
+  status          String   @default("pending")
+  ipHmac          String   @default("")
+  visitorTokenHash String  @default("")
+  regexDecision   String?
+  aiDecision      String?
+  aiCategory      String?
+  aiReason        String?
+  aiErrorCode     String?
+  warningApplied Int      @default(0)
+  createdAt      DateTime @default(now())
+  moderatedAt    DateTime?
+  moderatedBy    String?
+  deletedAt      DateTime?
+
+  article Article @relation(fields: [articleId], references: [id])
+}
+
+model VisitorRisk {
+  id              String   @id @default(uuid())
+  ipHmac          String   @default("")
+  visitorTokenHash String  @default("")
+  warningCount    Int     @default(0)
+  cooldownUntil   DateTime?
+  lastAttemptAt   DateTime?
+  lastSeenAt      DateTime?
+  updatedAt       DateTime @updatedAt
+
+  @@unique([ipHmac, visitorTokenHash])
+}
+
+model VisitorBan {
+  id              String   @id @default(uuid())
+  matchType       String   @default("ip")
+  ipHmac          String?
+  visitorTokenHash String?
+  expiresAt       DateTime?
+  permanent       Boolean  @default(false)
+  reason          String   @default("")
+  createdAt       DateTime @default(now())
+  createdBy       String
+  revokedAt       DateTime?
+  revokedBy       String?
+}
+
+model VisitorWarningEvent {
+  id              String   @id @default(uuid())
+  ipHmac          String   @default("")
+  visitorTokenHash String  @default("")
+  delta           Int      @default(0)
+  source          String   @default("regex")
+  commentId       String?
+  adminId         String?
+  reason          String?
+  createdAt       DateTime @default(now())
+}
+
+model RegexRule {
+  id              String   @id @default(uuid())
+  name            String
+  pattern         String
+  enabled         Boolean  @default(true)
+  priority        Int      @default(0)
+  action          String   @default("reject")
+  replacementText String  @default("")
+  warningIncrement Int     @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model CaptchaVerification {
+  id          String   @id @default(uuid())
+  tokenHash   String   @unique
+  provider    String
+  verifiedAt  DateTime @default(now())
+  expiresAt   DateTime?
+  hostname    String   @default("")
+  action      String   @default("")
+  success     Boolean
+  errorCode   String?
+}
+
+model ArticleViewDedup {
+  id           String   @id @default(uuid())
+  articleId    String
+  identityHash String
+  bucketStart  DateTime
+  createdAt    DateTime @default(now())
+
+  @@unique([articleId, identityHash, bucketStart])
+
+  article Article @relation(fields: [articleId], references: [id])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  adminId    String
+  action     String
+  targetType String   @default("")
+  targetId   String   @default("")
+  metadata   String   @default("{}")
+  createdAt  DateTime @default(now())
+}
+
+model GitSyncRun {
+  id            String   @id @default(uuid())
+  revision      String
+  branch        String   @default("main")
+  status        String   @default("pending")
+  changedFiles  String   @default("[]")
+  errorMessage  String   @default("")
+  startedAt     DateTime @default(now())
+  completedAt   DateTime?
+}
+
+model ComfyItem {
+  id          String    @id @default(uuid())
+  title       String
+  type        String
+  fileName    String
+  filePath    String
+  mimeType    String
+  sizeBytes   Int
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}

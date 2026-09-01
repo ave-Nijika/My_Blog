@@ -1,0 +1,52 @@
+{
+  "name": "blog",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "db:sync": "node scripts/sync-content.ts",
+    "db:seed": "node prisma/seed.ts",
+    "admin:create": "node scripts/admin-create.ts",
+    "db:generate:pg": "prisma generate --schema prisma/pg/schema.prisma",
+    "db:migrate:pg": "prisma migrate deploy --schema prisma/pg/schema.prisma",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.3",
+    "bcryptjs": "^3.0.3",
+    "gray-matter": "^4.0.3",
+    "highlight.js": "^11.12.0",
+    "next": "16.3.3",
+    "prisma": "6.19.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
+    "sharp": "^0.35.4",
+    "zod": "^3.25.76",
+    "semver": "^7.8.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.6",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitest/ui": "^4.1.11",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.3",
+    "happy-dom": "^20.11.12",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vitest": "^4.1.11"
+  },
+  "packageManager": "pnpm@11.24.0"
+}
