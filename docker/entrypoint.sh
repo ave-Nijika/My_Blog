@@ -9,15 +9,24 @@
 #    后台"保存即 Git 提交"（lib/content-git.ts）要求 getContentRepoRoot() 指向
 #    的目录本身是一个 git 仓库；生产容器里只有 /app 是应用 cwd，因此在此初始化，
 #    仅 track content/ 内容目录（其余为应用代码，不入库）。
-# 3) 末尾 exec su-exec 降权为 nextjs:nodejs 运行主进程（CMD）。
+# 3) 旧版残留处理：此前 entrypoint 在 /app/content 初始化过独立 git 仓库，
+#    仓库根迁移到 /app 后，content/.git 是嵌套仓库，须先移除避免被当作
+#    gitlink（embedded repository）提交。
+# 4) 末尾 exec su-exec 降权为 nextjs:nodejs 运行主进程（CMD）。
 set -e
 
 chown -R nextjs:nodejs /app/content 2>/dev/null || true
 chown -R nextjs:nodejs /app/uploads 2>/dev/null || true
 
+CONTENT_DIR="/app/content"
 REPO_DIR="/app"
 
 if [ -d "$REPO_DIR" ] && [ ! -e "$REPO_DIR/.git" ]; then
+  # 清理旧版 content 独立仓库残留（嵌套仓库会导致 git add content/ 变成 gitlink）
+  if [ -e "$CONTENT_DIR/.git" ]; then
+    echo "[entrypoint] 移除 content 目录旧版独立 .git（仓库根已迁移到 /app）"
+    rm -rf "$CONTENT_DIR/.git"
+  fi
   echo "[entrypoint] /app 不是 git 仓库，正在初始化..."
   cd "$REPO_DIR"
   git init -q -b main
