@@ -273,7 +273,7 @@ export function LlmSettingsForm({ initial }: { initial: Provider[] }) {
                 </label>
                 <label className="flex flex-col gap-1 text-sm">
                   <span className="font-medium text-slate-700 dark:text-slate-200">超时时间（秒，超过即路由下一家）</span>
-                  <input type="number" min={1} max={120} value={p.timeoutSec}
+                  <input type="number" min={1} value={p.timeoutSec}
                     onChange={(e) => {
                       const n = Number.parseInt(e.target.value, 10);
                       patch(p.id, { timeoutSec: Number.isFinite(n) && n > 0 ? n : 15 });

@@ -30,7 +30,7 @@ const providerSchema = z.object({
   baseUrl: z.string().min(1).max(300),
   apiKey: z.string().min(1).max(300),
   model: z.string().min(1).max(200),
-  timeoutSec: z.number().int().min(1).max(120),
+  timeoutSec: z.number().int().min(1),
   enabled: z.boolean(),
 });
 
