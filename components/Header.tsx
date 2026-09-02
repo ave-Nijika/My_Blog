@@ -21,12 +21,12 @@ export function Header({ links, locale }: HeaderProps) {
         <Link
           href="/"
           className="ripple-target group flex items-center gap-2.5 rounded-lg px-2 py-1.5"
-          aria-label="普拉纳的手账"
+          aria-label="普拉娜的手账"
         >
           <span className="ba-tri transition-transform duration-300 group-hover:scale-125" aria-hidden />
           <span className="flex flex-col leading-none">
             <span className="ba-font-round text-lg text-[color:rgb(var(--ba-primary))]">
-              普拉纳的手账
+              普拉娜的手账
             </span>
             <span className="ba-font-display mt-1 text-[9px] tracking-[0.18em] text-slate-400 dark:text-slate-500">
               PLANA'S NOTEBOOK

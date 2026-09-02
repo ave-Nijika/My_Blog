@@ -49,7 +49,7 @@ export function Hero() {
 
           <h1 className="ba-hero-in mb-2" style={{ "--d": "0.15s" } as CSSProperties}>
             <span className="ba-font-round block text-5xl leading-tight text-white drop-shadow-[0_4px_18px_rgba(9,18,34,0.55)] sm:text-6xl lg:text-7xl">
-              普拉纳的手账
+              普拉娜的手账
             </span>
             <span className="ba-font-display mt-3 block text-[11px] tracking-[0.5em] text-[rgb(var(--ba-yellow))] sm:text-sm">
               PLANA'S NOTEBOOK

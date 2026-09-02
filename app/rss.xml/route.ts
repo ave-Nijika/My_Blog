@@ -22,7 +22,7 @@ export async function GET() {
   const rss = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
-    <title>${escapeXml(site?.nickname || "普拉纳的手账")}</title>
+    <title>${escapeXml(site?.nickname || "普拉娜的手账")}</title>
     <description>${escapeXml(site?.biography || "记录学习过程中的所思所想，一个技术学习者的个人博客。")}</description>
     <link>${baseUrl}</link>
     <language>zh-CN</language>
