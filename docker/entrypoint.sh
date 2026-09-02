@@ -12,11 +12,14 @@
 # 3) 旧版残留处理：此前 entrypoint 在 /app/content 初始化过独立 git 仓库，
 #    仓库根迁移到 /app 后，content/.git 是嵌套仓库，须先移除避免被当作
 #    gitlink（embedded repository）提交。
-# 4) 末尾 exec su-exec 降权为 nextjs:nodejs 运行主进程（CMD）。
+# 4) /app 整体归主 nextjs：git 2.35+ 的 dubious ownership 检查要求仓库根
+#    （/app）属主与运行用户一致，否则 git 拒绝执行（fatal: dubious ownership）。
+# 5) 末尾 exec su-exec 降权为 nextjs:nodejs 运行主进程（CMD）。
 set -e
 
 chown -R nextjs:nodejs /app/content 2>/dev/null || true
 chown -R nextjs:nodejs /app/uploads 2>/dev/null || true
+chown -R nextjs:nodejs /app 2>/dev/null || true
 
 CONTENT_DIR="/app/content"
 REPO_DIR="/app"
