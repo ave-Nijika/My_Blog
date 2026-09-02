@@ -135,6 +135,51 @@ model Comment {
   article Article @relation(fields: [articleId], references: [id])
 }
 
+/// 文章物理删除前的存档（方案 C）：快照原始数据 + 完整 md + 版本历史 JSON
+model DeletedArticle {
+  id           String   @id @default(uuid())
+  originalId   String
+  slug         String
+  title        String
+  summary      String   @default("")
+  category     String   @default("")
+  cover        String   @default("")
+  pinned       Boolean  @default(false)
+  status       String   @default("draft")
+  publishedAt  DateTime?
+  viewCount    Int      @default(0)
+  rawMarkdown  String   @default("")
+  versionsJson String   @default("")
+  deletedAt    DateTime @default(now())
+  deletedBy    String   @default("")
+  commitSha    String   @default("")
+
+  comments DeletedComment[]
+}
+
+/// 被物理删除文章的评论存档（审核状态等原样保留，仅供追溯/管理）
+model DeletedComment {
+  id               String   @id @default(uuid())
+  originalId       String
+  deletedArticleId String
+  bodyText         String
+  status           String   @default("pending")
+  ipHmac           String   @default("")
+  visitorTokenHash String   @default("")
+  regexDecision    String?
+  aiDecision       String?
+  aiCategory       String?
+  aiReason         String?
+  aiErrorCode      String?
+  warningApplied   Int      @default(0)
+  createdAt        DateTime @default(now())
+  moderatedAt      DateTime?
+  moderatedBy      String?
+  deletedAt        DateTime?
+
+  article DeletedArticle @relation(fields: [deletedArticleId], references: [id])
+}
+
 model VisitorRisk {
   id              String   @id @default(uuid())
   ipHmac          String   @default("")
