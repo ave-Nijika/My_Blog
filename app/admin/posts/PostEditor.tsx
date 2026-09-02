@@ -118,22 +118,13 @@ export function PostEditor({ initial, mode }: Props) {
 
   function buildPayload(targetStatus: "draft" | "public" | "private") {
     // 发布时间语义：
-    // - 首次发布（新建 或 草稿→发布）：publishedAt 为空则自动设为当前时间，
-    //   保证"发布时间"在第一次发布时就落定，而非留空导致前台不显示
-    // - 已发布文章的后续"更新发布"：保留原发布时间，不随输入框改动
-    //   （"更新于"由服务端 updatedAt 自动记录，不在表单内修改）
-    let publishedAt: string | null;
-    if (targetStatus === "public") {
-      if (mode === "edit" && initial.status === "public") {
-        publishedAt = initial.publishedAt
-          ? new Date(initial.publishedAt).toISOString()
-          : new Date().toISOString();
-      } else {
-        publishedAt = fromInputDateTime(values.publishedAt) || new Date().toISOString();
-      }
-    } else {
-      publishedAt = fromInputDateTime(values.publishedAt);
-    }
+    // - 发布时（targetStatus === "public"）：publishedAt 为空则自动设为当前时间
+    // - 用户手动输入了时间则用用户输入的值（已发布文章的"更新发布"也尊重用户选择）
+    // - 非发布状态（草稿/私有）：存用户输入值或 null
+    const publishedAt =
+      targetStatus === "public"
+        ? fromInputDateTime(values.publishedAt) || new Date().toISOString()
+        : fromInputDateTime(values.publishedAt);
     return {
       slug: values.slug.trim(),
       title: values.title.trim(),

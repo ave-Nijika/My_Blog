@@ -172,11 +172,15 @@ export default async function AdminPostsPage({
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">
                     {post.publishedAt
-                      ? new Date(post.publishedAt).toLocaleDateString("en-US")
+                      ? new Date(post.publishedAt).toLocaleDateString("en-US", {
+                          timeZone: "Asia/Shanghai",
+                        })
                       : "—"}
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">
-                    {new Date(post.updatedAt).toLocaleDateString("en-US")}
+                    {new Date(post.updatedAt).toLocaleDateString("en-US", {
+                        timeZone: "Asia/Shanghai",
+                      })}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <PostRowActions postId={post.id} status={post.status} />

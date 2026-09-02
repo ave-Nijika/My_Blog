@@ -106,8 +106,10 @@ export async function commitFiles(
     const stdout =
       (error as { stdout?: string }).stdout?.toString() ?? "";
     if (
-      /nothing to commit/i.test(stderr) ||
-      /nothing to commit/i.test(stdout)
+      // git 无变更时输出两种文案："nothing to commit, working tree clean"
+      // 与 "nothing added to commit but untracked files present"，都要识别
+      /nothing (?:added )?to commit/i.test(stderr) ||
+      /nothing (?:added )?to commit/i.test(stdout)
     ) {
       throw new GitCommitError(
         "没有需要提交的内容（文件未发生变化）",
@@ -181,8 +183,10 @@ export async function removeFiles(
     const stdout =
       (error as { stdout?: string }).stdout?.toString() ?? "";
     if (
-      /nothing to commit/i.test(stderr) ||
-      /nothing to commit/i.test(stdout)
+      // git 无变更时输出两种文案："nothing to commit, working tree clean"
+      // 与 "nothing added to commit but untracked files present"，都要识别
+      /nothing (?:added )?to commit/i.test(stderr) ||
+      /nothing (?:added )?to commit/i.test(stdout)
     ) {
       throw new GitCommitError(
         "没有需要提交的内容（文件未发生变化）",
