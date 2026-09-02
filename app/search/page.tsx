@@ -45,41 +45,17 @@ export default async function SearchPage({
   const page = Number(searchParamsPromise.page) || 1;
   const perPage = 10;
 
-  if (!query) {
-    return (
-      <div className="mx-auto max-w-3xl px-4 py-14 sm:px-6">
-        <Reveal translateY={10} className="relative inline-block">
-          <span className="ba-tri absolute -left-5 -top-1 h-3 w-3.5 opacity-90" aria-hidden />
-          <h1 className="ba-font-round text-3xl text-[color:rgb(var(--ba-primary))]">
-            {t.page.searchTitle}
-          </h1>
-        </Reveal>
-        <Reveal delay={80} className="mt-3">
-          <span className="ba-pill ba-pill--soft">{t.page.searchHint}</span>
-        </Reveal>
-        <Reveal translateY={12} delay={120} className="mt-10">
-          <div className="ba-card flex flex-col items-center gap-4 p-12 text-center">
-            <span className="ba-tri h-9 w-11 opacity-70" aria-hidden />
-            <h3 className="ba-font-round text-lg font-semibold text-[color:rgb(var(--color-text-primary))] dark:text-slate-100">
-              {t.page.searchTitle}
-            </h3>
-            <p className="text-sm text-slate-600 dark:text-slate-400 max-sm:text-sm">
-              {t.page.searchEmptyHint}
-            </p>
-          </div>
-        </Reveal>
-      </div>
-    );
-  }
-
   if (query.length > 100) {
     notFound();
   }
 
-  const [result, totalCount] = await Promise.all([
-    searchArticles(query, page, perPage),
-    countSearchResults(query),
-  ]);
+  // 无 q 参数时不查库：仅渲染常驻搜索框与引导文案（修复需求 4.3）
+  const [result, totalCount] = query
+    ? await Promise.all([
+        searchArticles(query, page, perPage),
+        countSearchResults(query),
+      ])
+    : [{ articles: [] as Awaited<ReturnType<typeof searchArticles>>["articles"] }, 0];
 
   const totalPages = Math.ceil(totalCount / perPage);
 
@@ -95,16 +71,39 @@ export default async function SearchPage({
       <Reveal translateY={10} className="relative inline-block">
         <span className="ba-tri absolute -left-5 -top-1 h-3 w-3.5 opacity-90" aria-hidden />
         <h1 className="ba-font-round text-3xl text-[color:rgb(var(--ba-primary))]">
-          {t.page.searchResultsFor.replace("{{query}}", query)}
+          {query
+            ? t.page.searchResultsFor.replace("{{query}}", query)
+            : t.page.searchTitle}
         </h1>
       </Reveal>
-      <Reveal delay={80} className="mt-3">
+
+      {/* 搜索框常驻（修复需求 4.3）：无论有无 q 参数都可在此输入新关键词回车搜索 */}
+      <Reveal delay={80} className="mt-5">
+        <form action="/search" method="get" className="flex items-center gap-2">
+          <input
+            type="search"
+            name="q"
+            maxLength={100}
+            defaultValue={query}
+            placeholder={t.common.searchPlaceholder}
+            aria-label={t.common.search}
+            className="w-full max-w-md rounded-full border border-[color:rgb(var(--ba-line))] bg-[color:rgb(var(--color-surface))] px-4 py-2 text-sm text-[color:rgb(var(--color-text-primary))] outline-none transition focus:border-[rgb(var(--ba-primary))] focus:ring-2 focus:ring-[rgb(var(--ba-primary))]/25 max-sm:text-sm"
+          />
+          <button type="submit" className="ba-btn ba-btn-primary px-5 py-2 text-xs">
+            {t.common.search}
+          </button>
+        </form>
+      </Reveal>
+
+      <Reveal delay={120} className="mt-4">
         <span className="ba-pill ba-pill--soft">
-          {t.page.searchFound.replace("{{count}}", String(totalCount))}
+          {query
+            ? t.page.searchFound.replace("{{count}}", String(totalCount))
+            : t.page.searchHint}
         </span>
       </Reveal>
 
-      {result.articles.length === 0 ? (
+      {query && result.articles.length === 0 && (
         <Reveal className="mt-10">
           <div className="ba-card flex flex-col items-center gap-4 p-12 text-center">
             <span className="ba-tri h-9 w-11 rotate-180 opacity-70" aria-hidden />
@@ -119,7 +118,9 @@ export default async function SearchPage({
             </Link>
           </div>
         </Reveal>
-      ) : (
+      )}
+
+      {query && result.articles.length > 0 && (
         <>
           <ul className="mt-6 border-t border-[color:rgb(var(--ba-line))]">
             {result.articles.map((post, index) => (
@@ -157,6 +158,17 @@ export default async function SearchPage({
             </div>
           )}
         </>
+      )}
+
+      {!query && (
+        <Reveal translateY={12} delay={160} className="mt-10">
+          <div className="ba-card flex flex-col items-center gap-4 p-12 text-center">
+            <span className="ba-tri h-9 w-11 opacity-70" aria-hidden />
+            <p className="text-sm text-slate-600 dark:text-slate-400 max-sm:text-sm">
+              {t.page.searchEmptyHint}
+            </p>
+          </div>
+        </Reveal>
       )}
     </div>
   );
