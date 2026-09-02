@@ -40,6 +40,12 @@ let db: {
   visitorBan: { findFirst: (args: unknown) => Promise<Record<string, unknown> | null> };
   articleViewDedup: { count: (args: unknown) => Promise<number> };
   articleTag: { create: (args: unknown) => Promise<unknown>; deleteMany: (args: unknown) => Promise<unknown> };
+  deletedArticle: { findFirst: (args: unknown) => Promise<Record<string, unknown> | null> };
+  deletedComment: {
+    findFirst: (args: unknown) => Promise<Record<string, unknown> | null>;
+    findUnique: (args: unknown) => Promise<Record<string, unknown> | null>;
+    count: (args: unknown) => Promise<number>;
+  };
   $disconnect: () => Promise<void>;
 } | null = null;
 
@@ -361,20 +367,26 @@ describe("管理员后台全链路", () => {
     expect(page.status).toBe(200);
   });
 
-  it("删除文章：归档而非物理删除，页面 404", async () => {
+  it("删除文章：物理删除，列表不再出现，页面 404（P1-2 归档语义被方案 C 取代）", async () => {
     const res = await req(`/api/admin/posts/${createdId}`, {
       method: "DELETE",
       headers: { "X-CSRF-Token": csrfToken },
     });
     expect(res.status).toBe(200);
+    const body = (await res.json()) as { deletedArticleId?: string };
+    expect(body.deletedArticleId).toBeTruthy();
     const page = await req("/posts/renamed-post");
     expect(page.status).toBe(404);
-    const archived = (await db!.article.findUnique({ where: { id: createdId } })) as {
-      archivedAt: string | null;
-      status: string;
+    // 物理删除：DB 记录不再存在（不再走"归档"路径）
+    const gone = (await db!.article.findUnique({ where: { id: createdId } })) as {
+      id: string;
     } | null;
-    expect(archived?.archivedAt).toBeTruthy();
-    expect(archived?.status).toBe("draft");
+    expect(gone).toBeNull();
+    // 管理列表不再出现该文章
+    const list = (await (await req("/api/admin/posts")).json()) as {
+      items: { id: string }[];
+    };
+    expect(list.items.some((p) => p.id === createdId)).toBe(false);
   });
 });
 
@@ -814,6 +826,191 @@ describe("分类标签管理 taxonomy", () => {
       headers: { "X-CSRF-Token": csrfToken },
     });
     expect(removed.status).toBe(200);
+  });
+});
+
+describe("文章物理删除与存档（方案 C）", () => {
+  const jsonHeaders = () => ({
+    "Content-Type": "application/json",
+    "X-CSRF-Token": csrfToken,
+  });
+  let articleId = "";
+  let deletedArticleId = "";
+  const SLUG = "physical-del-test";
+  const TITLE = "物理删除测试文章";
+  const BODY_MARKER = "存档快照正文标记XYZ";
+  const COMMENT_APPROVED = "存档批准评论ABC";
+  const COMMENT_PENDING = "存档待审评论DEF";
+
+  it("删除已发布文章：200、列表不再出现、公开页 404、DB 记录消失", async () => {
+    // 建文 → 发布 → 造两条不同状态的评论 → 删除
+    const create = await req("/api/admin/posts", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        slug: SLUG,
+        title: TITLE,
+        summary: "物理删除链路验证",
+        status: "draft",
+        category: "测试",
+        tags: ["集成测试"],
+        body: `# 物理删除\n\n${BODY_MARKER}。`,
+      }),
+    });
+    expect(create.status).toBe(201);
+    const created = (await create.json()) as { post: { id: string } };
+    articleId = created.post.id;
+    const publish = await req(`/api/admin/posts/${articleId}/publish`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: "{}",
+    });
+    expect(publish.status).toBe(200);
+    await db!.comment.create({
+      data: { articleId, bodyText: COMMENT_APPROVED, status: "approved" },
+    });
+    await db!.comment.create({
+      data: { articleId, bodyText: COMMENT_PENDING, status: "pending" },
+    });
+
+    const del = await req(`/api/admin/posts/${articleId}`, {
+      method: "DELETE",
+      headers: jsonHeaders(),
+    });
+    expect(del.status).toBe(200);
+    const delBody = (await del.json()) as { deletedArticleId?: string };
+    expect(delBody.deletedArticleId).toBeTruthy();
+    deletedArticleId = delBody.deletedArticleId!;
+
+    // 管理列表（任一状态筛选）不再出现
+    const list = (await (await req("/api/admin/posts")).json()) as {
+      items: { id: string }[];
+    };
+    expect(list.items.some((p) => p.id === articleId)).toBe(false);
+    // 公开页 404，DB 记录物理消失
+    expect((await req(`/posts/${SLUG}`)).status).toBe(404);
+    const gone = (await db!.article.findUnique({ where: { id: articleId } })) as {
+      id: string;
+    } | null;
+    expect(gone).toBeNull();
+  });
+
+  it("删除后再次删除 → 404（不再报 git 错误）", async () => {
+    const res = await req(`/api/admin/posts/${articleId}`, {
+      method: "DELETE",
+      headers: jsonHeaders(),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("DeletedArticle/DeletedComment 存档记录完整（快照/版本/评论）", async () => {
+    const archived = (await db!.deletedArticle.findFirst({
+      where: { originalId: articleId },
+    })) as Record<string, unknown> | null;
+    expect(archived).toBeTruthy();
+    expect(archived!.slug).toBe(SLUG);
+    expect(archived!.title).toBe(TITLE);
+    expect(archived!.status).toBe("public");
+    expect(archived!.id).toBe(deletedArticleId);
+    // md 快照含正文与 frontmatter
+    expect(String(archived!.rawMarkdown)).toContain(BODY_MARKER);
+    expect(String(archived!.rawMarkdown)).toContain(TITLE);
+    // 版本历史快照：此前 create/update 记录 + 删除提交记录
+    const versions = JSON.parse(String(archived!.versionsJson)) as {
+      commitSha: string;
+      action: string;
+    }[];
+    expect(versions.length).toBeGreaterThanOrEqual(2);
+    expect(versions[versions.length - 1].action).toBe("delete");
+    expect(versions[versions.length - 1].commitSha).toBeTruthy();
+    expect(String(archived!.commitSha)).toBe(
+      versions[versions.length - 1].commitSha
+    );
+    // 评论逐条存档，状态保留
+    const comments = (await db!.deletedComment.findFirst({
+      where: { deletedArticleId: deletedArticleId },
+    })) as { bodyText: string } | null;
+    expect(comments).toBeTruthy();
+    const archivedComments = await db!.deletedComment.count({
+      where: { deletedArticleId: deletedArticleId },
+    });
+    expect(archivedComments).toBe(2);
+  });
+
+  it("已删文章评论出现在 scope=deleted，且不在正常列表", async () => {
+    const deletedScope = (await (
+      await req("/api/admin/comments?scope=deleted")
+    ).json()) as {
+      items: {
+        bodyText: string;
+        isFromDeletedArticle?: boolean;
+        deletedArticleTitle?: string;
+      }[];
+    };
+    const archivedOne = deletedScope.items.find(
+      (c) => c.bodyText === COMMENT_APPROVED
+    );
+    expect(archivedOne).toBeTruthy();
+    expect(archivedOne!.isFromDeletedArticle).toBe(true);
+    expect(archivedOne!.deletedArticleTitle).toBe(TITLE);
+
+    const normalScope = (await (await req("/api/admin/comments")).json()) as {
+      items: { bodyText: string }[];
+    };
+    expect(normalScope.items.some((c) => c.bodyText === COMMENT_APPROVED)).toBe(
+      false
+    );
+    expect(normalScope.items.some((c) => c.bodyText === COMMENT_PENDING)).toBe(
+      false
+    );
+  });
+
+  it("删除后编辑该文章 → 404", async () => {
+    const res = await req(`/api/admin/posts/${articleId}`, {
+      method: "PUT",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        slug: SLUG,
+        title: TITLE,
+        status: "draft",
+        body: "# 不应成功",
+      }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("已删文章评论可物理删除：200 后记录消失，再删 404", async () => {
+    const target = (await db!.deletedComment.findFirst({
+      where: { deletedArticleId: deletedArticleId, bodyText: COMMENT_PENDING },
+    })) as { id: string } | null;
+    expect(target).toBeTruthy();
+    const del = await req(`/api/admin/deleted-comments/${target!.id}`, {
+      method: "DELETE",
+      headers: jsonHeaders(),
+    });
+    expect(del.status).toBe(200);
+    const gone = (await db!.deletedComment.findUnique({
+      where: { id: target!.id },
+    })) as { id: string } | null;
+    expect(gone).toBeNull();
+    const again = await req(`/api/admin/deleted-comments/${target!.id}`, {
+      method: "DELETE",
+      headers: jsonHeaders(),
+    });
+    expect(again.status).toBe(404);
+  });
+
+  it("存档评论不支持审核：approve 端点对存档 id 返回 404", async () => {
+    const remaining = (await db!.deletedComment.findFirst({
+      where: { deletedArticleId: deletedArticleId, bodyText: COMMENT_APPROVED },
+    })) as { id: string } | null;
+    expect(remaining).toBeTruthy();
+    const res = await req(`/api/admin/comments/${remaining!.id}/approve`, {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: "{}",
+    });
+    expect(res.status).toBe(404);
   });
 });
 

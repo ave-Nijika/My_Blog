@@ -608,49 +608,146 @@ export async function updatePost(
 export interface DeletePostResult {
   commitSha: string;
   slug: string;
+  /** DeletedArticle 存档记录 id（审计用） */
+  deletedArticleId: string;
 }
 
+/**
+ * 物理删除文章（方案 C：删除前先把文章与关联数据存档）。
+ *
+ * 流程：
+ *   1. 查文章（含 comments/versions）——不存在抛 PostNotFoundError（404），
+ *      天然解决"重复删除报 git 错"；
+ *   2. 存档：DeletedArticle（原始数据 + 磁盘 md 全文快照 + versionsJson）
+ *      + DeletedComment（逐条复制），与物理删除同事务，存档失败则整体回滚；
+ *   3. db.article.delete 物理删除（FK 级联清理 ArticleTag/Comment/
+ *      ArticleVersion/ArticleViewDedup）；
+ *   4. 删除磁盘文件（ENOENT 吞掉，幂等）；
+ *   5. git commit 删除记录（"nothing to commit" 吞掉——文件此前已删的场景）；
+ *   6. syncAfterChange()（磁盘已无文件，同步引擎不会重建，也不会再"归档"）；
+ *   7. 审计由 API 路由完成（POST_DELETE，附 deletedArticleId）。
+ */
 export async function deletePost(
   id: string,
   sessionId: string
 ): Promise<DeletePostResult> {
-  const existing = await db.article.findUnique({ where: { id } });
+  const existing = await db.article.findUnique({
+    where: { id },
+    include: { comments: true, versions: true },
+  });
   if (!existing) throw new PostNotFoundError(id);
+
+  // 磁盘 md 全文快照（含 frontmatter）。文件已缺失时按空串存档，不阻断删除。
+  let rawMarkdown = "";
+  try {
+    rawMarkdown = await fs.readFile(
+      path.join(POSTS_DIR(), `${existing.slug}.md`),
+      "utf-8"
+    );
+  } catch {
+    rawMarkdown = "";
+  }
+
+  const versionsSnapshot = existing.versions
+    .map((v) => ({
+      commitSha: v.commitSha,
+      action: v.action,
+      adminId: v.adminId,
+      createdAt: v.createdAt.toISOString(),
+    }))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  // 存档 + 物理删除必须原子：存档失败则回滚，不出现"删了文章但存档没写入"
+  const archived = await db.$transaction(async (tx) => {
+    const row = await tx.deletedArticle.create({
+      data: {
+        originalId: existing.id,
+        slug: existing.slug,
+        title: existing.title,
+        summary: existing.summary,
+        category: existing.category,
+        cover: existing.cover,
+        pinned: existing.pinned,
+        status: existing.status,
+        publishedAt: existing.publishedAt,
+        viewCount: existing.viewCount,
+        rawMarkdown,
+        versionsJson: JSON.stringify(versionsSnapshot),
+        deletedBy: sessionId,
+      },
+    });
+    if (existing.comments.length > 0) {
+      await tx.deletedComment.createMany({
+        data: existing.comments.map((c) => ({
+          originalId: c.id,
+          deletedArticleId: row.id,
+          bodyText: c.bodyText,
+          status: c.status,
+          ipHmac: c.ipHmac,
+          visitorTokenHash: c.visitorTokenHash,
+          regexDecision: c.regexDecision,
+          aiDecision: c.aiDecision,
+          aiCategory: c.aiCategory,
+          aiReason: c.aiReason,
+          aiErrorCode: c.aiErrorCode,
+          warningApplied: c.warningApplied,
+          createdAt: c.createdAt,
+          moderatedAt: c.moderatedAt,
+          moderatedBy: c.moderatedBy,
+          deletedAt: c.deletedAt,
+        })),
+      });
+    }
+    // 显式清理子表后再删文章：schema 中 Article 关系均为默认 RESTRICT
+    //（无 ON DELETE CASCADE），显式删除在事务内达成同样的"级联清理"效果，
+    // 且不改动任何外键语义（评论/标签关联/版本/阅读量去重桶都已存档或无需保留）
+    await tx.comment.deleteMany({ where: { articleId: id } });
+    await tx.articleTag.deleteMany({ where: { articleId: id } });
+    await tx.articleVersion.deleteMany({ where: { articleId: id } });
+    await tx.articleViewDedup.deleteMany({ where: { articleId: id } });
+    await tx.article.delete({ where: { id } });
+    return row;
+  });
 
   const { relative } = filePathForSlug(existing.slug);
   await deleteMarkdownFile(existing.slug);
 
-  let commit: { commitSha: string; message: string };
+  let commitSha = "";
   try {
-    commit = await removeFiles(
+    const commit = await removeFiles(
       [relative],
       `content: delete article ${existing.id} (${existing.slug})`
     );
+    commitSha = commit.commitSha;
+    // 回填删除 commit sha，并把本次删除作为最后一条版本记录并入快照
+    await db.deletedArticle.update({
+      where: { id: archived.id },
+      data: {
+        commitSha,
+        versionsJson: JSON.stringify([
+          ...versionsSnapshot,
+          {
+            commitSha,
+            action: "delete",
+            adminId: adminIdPlaceholder(sessionId),
+            createdAt: new Date().toISOString(),
+          },
+        ]),
+      },
+    });
   } catch (error) {
-    if (error instanceof GitCommitError) {
+    // 文件此前已被删除（如同步引擎归档场景）时 git 无变更可提交：
+    // 存档与物理删除均已完成，吞掉 NOTHING_TO_COMMIT，其余 git 错误照抛。
+    if (!(error instanceof GitCommitError && error.code === "NOTHING_TO_COMMIT")) {
       throw error;
     }
-    throw error;
   }
 
-  // 同步引擎现在把"磁盘消失的文章"归档而非物理删除（P1-2），
-  // 因此这里的 ArticleVersion 写入不再因文章被删而触发外键违例。
   await syncAfterChange();
-
-  await db.articleVersion.create({
-    data: {
-      articleId: id,
-      commitSha: commit.commitSha,
-      contentHash: "",
-      source: "admin",
-      action: "delete",
-      adminId: adminIdPlaceholder(sessionId),
-    },
-  });
 
   clearPostsCache();
   revalidatePostPaths(existing.slug);
-  return { commitSha: commit.commitSha, slug: existing.slug };
+  return { commitSha, slug: existing.slug, deletedArticleId: archived.id };
 }
 
 async function loadRecord(id: string): Promise<AdminPostRecord | null> {

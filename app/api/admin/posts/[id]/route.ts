@@ -133,10 +133,16 @@ export async function DELETE(
       metadata: {
         slug: result.slug,
         commitSha: result.commitSha,
+        deletedArticleId: result.deletedArticleId,
       },
     });
     return new Response(
-      JSON.stringify({ ok: true, slug: result.slug, commitSha: result.commitSha }),
+      JSON.stringify({
+        ok: true,
+        slug: result.slug,
+        commitSha: result.commitSha,
+        deletedArticleId: result.deletedArticleId,
+      }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (error) {
