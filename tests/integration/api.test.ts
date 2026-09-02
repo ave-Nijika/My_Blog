@@ -32,13 +32,14 @@ const IP_SECRET = "test-ip-secret";
 let server: ChildProcess | null = null;
 let tmpRoot = "";
 let db: {
-  article: { findUnique: (args: unknown) => Promise<Record<string, unknown> | null> };
+  article: { findUnique: (args: unknown) => Promise<Record<string, unknown> | null>; update: (args: unknown) => Promise<unknown> };
   comment: { findMany: (args: unknown) => Promise<Record<string, unknown>[]>; count: (args: unknown) => Promise<number>; create: (args: unknown) => Promise<Record<string, unknown>> };
   regexRule: { create: (args: unknown) => Promise<unknown> };
   siteSettings: { findFirst: () => Promise<unknown>; create: (args: unknown) => Promise<unknown> };
   visitorRisk: { findUnique: (args: unknown) => Promise<{ warningCount: number } | null> };
   visitorBan: { findFirst: (args: unknown) => Promise<Record<string, unknown> | null> };
   articleViewDedup: { count: (args: unknown) => Promise<number> };
+  articleTag: { create: (args: unknown) => Promise<unknown>; deleteMany: (args: unknown) => Promise<unknown> };
   $disconnect: () => Promise<void>;
 } | null = null;
 
@@ -149,10 +150,12 @@ beforeAll(async () => {
   const prisma = new PrismaClient();
   db = prisma as unknown as typeof db;
 
-  // 4. 种子：内容同步 + 管理员
+  // 4. 种子：内容同步 + 分类/标签预置 + 管理员
   const { syncContent } = await import("../../lib/content-sync");
   process.env.CONTENT_POSTS_DIR = path.join(tmpRoot, "content", "posts");
   await syncContent();
+  const { seedTaxonomy } = await import("../../scripts/seed-taxonomy");
+  await seedTaxonomy();
   await prisma.adminUser.create({
     data: {
       username: admin.username,
@@ -620,6 +623,197 @@ describe("评论游客可见开关", () => {
     const guestDom = visibleDom(await guest.text());
     expect(guestDom).toContain('id="comment-body"');
     expect(guestDom).toContain("评论");
+  });
+});
+
+describe("分类标签管理 taxonomy", () => {
+  // 惰性取 csrfToken（describe 收集期该变量尚未由登录流程赋值）
+  const jsonHeaders = () => ({
+    "Content-Type": "application/json",
+    "X-CSRF-Token": csrfToken,
+  });
+
+  it("未登录访问 taxonomy API 一律 401", async () => {
+    expect((await req("/api/admin/taxonomy", {}, { useJar: false })).status).toBe(401);
+    const post = await req("/api/admin/taxonomy/category", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "游客分类" }),
+    }, { useJar: false });
+    expect(post.status).toBe(401);
+    const del = await req("/api/admin/taxonomy/tag/whatever", {
+      method: "DELETE",
+    }, { useJar: false });
+    expect(del.status).toBe(401);
+  });
+
+  it("登录后无 CSRF 的写操作 403", async () => {
+    const res = await req("/api/admin/taxonomy/category", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "无CSRF分类" }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("GET 列表包含预置分类/标签（seed 幂等写入）", async () => {
+    const res = await req("/api/admin/taxonomy");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      categories: { name: string }[];
+      tags: { name: string }[];
+    };
+    const catNames = body.categories.map((c) => c.name);
+    const tagNames = body.tags.map((t) => t.name);
+    for (const name of ["技术", "生活", "随笔", "未分类"]) {
+      expect(catNames).toContain(name);
+    }
+    for (const name of ["学习", "算法", "前端", "后端"]) {
+      expect(tagNames).toContain(name);
+    }
+  });
+
+  it("POST 分类：正常创建 201；重名 409；列表可见", async () => {
+    const create = await req("/api/admin/taxonomy/category", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ name: "集成测试分类" }),
+    });
+    expect(create.status).toBe(201);
+    const dup = await req("/api/admin/taxonomy/category", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ name: "集成测试分类" }),
+    });
+    expect(dup.status).toBe(409);
+    const list = (await (await req("/api/admin/taxonomy")).json()) as {
+      categories: { name: string }[];
+    };
+    expect(list.categories.some((c) => c.name === "集成测试分类")).toBe(true);
+  });
+
+  it("POST 标签：正常创建 201；重名 409", async () => {
+    const create = await req("/api/admin/taxonomy/tag", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ name: "集成测试标签" }),
+    });
+    expect(create.status).toBe(201);
+    const dup = await req("/api/admin/taxonomy/tag", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ name: "集成测试标签" }),
+    });
+    expect(dup.status).toBe(409);
+  });
+
+  it("PUT 分类重命名：200 且文章引用同步改写；改成已存在名 409", async () => {
+    const created = (await (
+      await req("/api/admin/taxonomy/category", {
+        method: "POST",
+        headers: jsonHeaders(),
+        body: JSON.stringify({ name: "重命名前分类" }),
+      })
+    ).json()) as { category: { id: string } };
+    // 让一篇文章引用该分类，验证重命名级联改写字符串字段
+    const article = (await db!.article.findUnique({
+      where: { slug: "hello-world" },
+    })) as { id: string } | null;
+    expect(article).toBeTruthy();
+    await db!.article.update({
+      where: { id: article!.id },
+      data: { category: "重命名前分类" },
+    });
+
+    const renamed = await req(
+      `/api/admin/taxonomy/category/${created.category.id}`,
+      { method: "PUT", headers: jsonHeaders(), body: JSON.stringify({ name: "重命名后分类" }) }
+    );
+    expect(renamed.status).toBe(200);
+    const after = (await db!.article.findUnique({
+      where: { slug: "hello-world" },
+    })) as { category: string } | null;
+    expect(after?.category).toBe("重命名后分类");
+
+    // 与预置分类「技术」重名 → 409
+    const conflict = await req(
+      `/api/admin/taxonomy/category/${created.category.id}`,
+      { method: "PUT", headers: jsonHeaders(), body: JSON.stringify({ name: "技术" }) }
+    );
+    expect(conflict.status).toBe(409);
+  });
+
+  it("DELETE 分类：被文章引用 409；无引用 200 且列表移除", async () => {
+    // 上一个用例中 hello-world 仍引用「重命名后分类」，需要先找到其 id
+    const list = (await (await req("/api/admin/taxonomy")).json()) as {
+      categories: { id: string; name: string }[];
+    };
+    const referenced = list.categories.find((c) => c.name === "重命名后分类");
+    expect(referenced).toBeTruthy();
+    const denied = await req(`/api/admin/taxonomy/category/${referenced!.id}`, {
+      method: "DELETE",
+      headers: { "X-CSRF-Token": csrfToken },
+    });
+    expect(denied.status).toBe(409);
+    const deniedBody = (await denied.json()) as { error?: string };
+    expect(deniedBody.error).toContain("引用");
+
+    const created = (await (
+      await req("/api/admin/taxonomy/category", {
+        method: "POST",
+        headers: jsonHeaders(),
+        body: JSON.stringify({ name: "待删分类" }),
+      })
+    ).json()) as { category: { id: string } };
+    const removed = await req(`/api/admin/taxonomy/category/${created.category.id}`, {
+      method: "DELETE",
+      headers: { "X-CSRF-Token": csrfToken },
+    });
+    expect(removed.status).toBe(200);
+    const after = (await (await req("/api/admin/taxonomy")).json()) as {
+      categories: { name: string }[];
+    };
+    expect(after.categories.some((c) => c.name === "待删分类")).toBe(false);
+  });
+
+  it("PUT 标签重命名 200；DELETE 被引用 409、解除引用后 200", async () => {
+    const created = (await (
+      await req("/api/admin/taxonomy/tag", {
+        method: "POST",
+        headers: jsonHeaders(),
+        body: JSON.stringify({ name: "生命周期标签" }),
+      })
+    ).json()) as { tag: { id: string } };
+    const tagId = created.tag.id;
+
+    const renamed = await req(`/api/admin/taxonomy/tag/${tagId}`, {
+      method: "PUT",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ name: "生命周期标签改" }),
+    });
+    expect(renamed.status).toBe(200);
+
+    // 关联一篇文章后删除被拒（ArticleTag 关联表计数）
+    const article = (await db!.article.findUnique({
+      where: { slug: "hello-world" },
+    })) as { id: string } | null;
+    expect(article).toBeTruthy();
+    await db!.articleTag.create({
+      data: { articleId: article!.id, tagId },
+    });
+    const denied = await req(`/api/admin/taxonomy/tag/${tagId}`, {
+      method: "DELETE",
+      headers: { "X-CSRF-Token": csrfToken },
+    });
+    expect(denied.status).toBe(409);
+    expect(((await denied.json()) as { error?: string }).error).toContain("引用");
+
+    await db!.articleTag.deleteMany({ where: { tagId } });
+    const removed = await req(`/api/admin/taxonomy/tag/${tagId}`, {
+      method: "DELETE",
+      headers: { "X-CSRF-Token": csrfToken },
+    });
+    expect(removed.status).toBe(200);
   });
 });
 

@@ -10,6 +10,7 @@
     "lint": "eslint",
     "db:sync": "node scripts/sync-content.ts",
     "db:seed": "node prisma/seed.ts",
+    "taxonomy:seed": "node scripts/seed-taxonomy.ts",
     "admin:create": "node scripts/admin-create.ts",
     "db:generate:pg": "prisma generate --schema prisma/pg/schema.prisma",
     "db:migrate:pg": "prisma migrate deploy --schema prisma/pg/schema.prisma",

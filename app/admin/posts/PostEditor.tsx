@@ -14,7 +14,7 @@
  *   - 预览切换：在编辑器右侧/下方展开 react-markdown 渲染
  *   - 校验：title 非空、slug 合法、status 合法由服务端最终把关
  */
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -34,6 +34,10 @@ export type PostFormValues = {
   publishedAt: string; // ISO 字符串或空字符串
   body: string;
 };
+
+type TaxonomyItem = { id: string; name: string; slug: string };
+
+type Taxonomy = { categories: TaxonomyItem[]; tags: TaxonomyItem[] };
 
 type Props = {
   initial: PostFormValues;
@@ -67,6 +71,46 @@ export function PostEditor({ initial, mode }: Props) {
   const [showPreview, setShowPreview] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, startDelete] = useTransition();
+
+  // 预置分类/标签（含自定义与文章聚合项，见 /api/admin/taxonomy）。
+  // 拉取失败不影响编辑器：快捷选择只是增强，输入框始终可用。
+  const [taxonomy, setTaxonomy] = useState<Taxonomy>({ categories: [], tags: [] });
+  useEffect(() => {
+    let cancelled = false;
+    fetchWithCsrf("/api/admin/taxonomy")
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = (await res.json().catch(() => null)) as
+          | (Taxonomy & { ok?: boolean })
+          | null;
+        if (!cancelled && data) {
+          setTaxonomy({
+            categories: data.categories ?? [],
+            tags: data.tags ?? [],
+          });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 分类快捷项：输入时按已填内容过滤（可搜索），空则展示全部
+  const categoryInput = values.category.trim();
+  const categoryPresets = categoryInput
+    ? taxonomy.categories.filter((c) => c.name.includes(categoryInput))
+    : taxonomy.categories;
+  // 标签快捷项：已加入的置灰不可重复点击
+  const currentTags = values.tagsInput
+    .split(/[,，]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  function addTag(name: string) {
+    if (currentTags.includes(name)) return;
+    update("tagsInput", [...currentTags, name].join(", "));
+  }
 
   function update<K extends keyof PostFormValues>(key: K, value: PostFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -223,7 +267,7 @@ export function PostEditor({ initial, mode }: Props) {
       </Field>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Field label="分类">
+        <Field label="分类" hint="点击预置项快速填入（输入时可搜索过滤），也可自由输入">
           <input
             type="text"
             value={values.category}
@@ -231,8 +275,20 @@ export function PostEditor({ initial, mode }: Props) {
             maxLength={64}
             className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
           />
+          {categoryPresets.length > 0 ? (
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {categoryPresets.map((c) => (
+                <PresetChip
+                  key={c.id || c.name}
+                  label={c.name}
+                  active={categoryInput === c.name}
+                  onClick={() => update("category", c.name)}
+                />
+              ))}
+            </div>
+          ) : null}
         </Field>
-        <Field label="标签" hint="使用逗号分隔">
+        <Field label="标签" hint="使用逗号分隔；点击预置标签加入，已加入的置灰">
           <input
             type="text"
             value={values.tagsInput}
@@ -240,6 +296,19 @@ export function PostEditor({ initial, mode }: Props) {
             placeholder="例：随笔, 学习, 算法"
             className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
           />
+          {taxonomy.tags.length > 0 ? (
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {taxonomy.tags.map((tag) => (
+                <PresetChip
+                  key={tag.id || tag.name}
+                  label={tag.name}
+                  active={currentTags.includes(tag.name)}
+                  dimmed={currentTags.includes(tag.name)}
+                  onClick={() => addTag(tag.name)}
+                />
+              ))}
+            </div>
+          ) : null}
         </Field>
         <Field label="发布时间" hint="发布时若留空将自动设为现在">
           <input
@@ -379,6 +448,39 @@ function Field({
         <span className="text-xs text-slate-500 dark:text-slate-400">{hint}</span>
       ) : null}
     </label>
+  );
+}
+
+/** 预置分类/标签 chip：active 表示已选中/已加入，dimmed 表示不可再点（已加入） */
+function PresetChip({
+  label,
+  active,
+  dimmed = false,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  dimmed?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      aria-disabled={dimmed || undefined}
+      className={`rounded-full border px-2.5 py-0.5 text-xs transition-colors ${
+        active
+          ? "border-sky-400 bg-sky-50 text-sky-700 dark:border-sky-600 dark:bg-sky-950/40 dark:text-sky-300"
+          : "border-slate-200 bg-slate-50 text-slate-600 hover:border-sky-400 hover:text-sky-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-sky-500 dark:hover:text-sky-400"
+      } ${
+        dimmed
+          ? "cursor-default opacity-45 hover:border-slate-200 hover:text-slate-600 dark:hover:border-slate-700 dark:hover:text-slate-300"
+          : ""
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 

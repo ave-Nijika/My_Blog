@@ -148,6 +148,7 @@ export const zh = {
     posts: "文章管理",
     comments: "评论审核",
     regexRules: "正则规则",
+    taxonomy: "分类与标签",
     visitors: "访客管理",
     auditLogs: "审计日志",
     siteSettings: "站点设置",

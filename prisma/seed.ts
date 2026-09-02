@@ -1,4 +1,5 @@
 import { db } from "../lib/db.ts";
+import { seedTaxonomy } from "../scripts/seed-taxonomy.ts";
 
 async function main() {
   const siteProfileCount = await db.siteProfile.count();
@@ -33,6 +34,12 @@ async function main() {
   } else {
     console.log("[db:seed] SiteSettings 已存在，跳过创建。");
   }
+
+  // 分类/标签预置（幂等 upsert，已存在的跳过）
+  const taxonomy = await seedTaxonomy();
+  console.log(
+    `[db:seed] 分类/标签预置：新增分类 ${taxonomy.categories} 个、新增标签 ${taxonomy.tags} 个。`
+  );
 
   const profile = await db.siteProfile.findFirst();
   console.log(

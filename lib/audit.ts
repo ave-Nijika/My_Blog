@@ -258,6 +258,12 @@ export const AUDIT_ACTIONS = {
   PASSWORD_CHANGE: "auth.password.change",
   LLM_DISABLED: "llm.disabled",
   LLM_ERROR: "llm.error",
+  TAXONOMY_CATEGORY_CREATE: "taxonomy.category.create",
+  TAXONOMY_CATEGORY_UPDATE: "taxonomy.category.update",
+  TAXONOMY_CATEGORY_DELETE: "taxonomy.category.delete",
+  TAXONOMY_TAG_CREATE: "taxonomy.tag.create",
+  TAXONOMY_TAG_UPDATE: "taxonomy.tag.update",
+  TAXONOMY_TAG_DELETE: "taxonomy.tag.delete",
   CREATE: "create",
   DELETE: "delete",
 } as const;
