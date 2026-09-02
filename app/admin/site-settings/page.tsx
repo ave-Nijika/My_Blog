@@ -57,6 +57,7 @@ export default async function SiteSettingsPage() {
           commentBodyMaxBytes: settings.commentBodyMaxBytes,
           autoBanWarningThreshold: settings.autoBanWarningThreshold,
           allowRegexOnlyOnLlmFailure: settings.allowRegexOnlyOnLlmFailure,
+          commentsVisibleToGuests: settings.commentsVisibleToGuests,
           aboutNotes: settings.aboutNotes,
           aboutContacts: settings.aboutContacts
             ? (JSON.parse(settings.aboutContacts) as never)

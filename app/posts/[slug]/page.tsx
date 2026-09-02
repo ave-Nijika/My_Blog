@@ -14,6 +14,7 @@ import {
   getPublicArticleSlugs,
 } from "@/lib/queries";
 import { listApprovedComments, getCommentConfig } from "@/lib/comments";
+import { getEffectiveSiteSettings } from "@/lib/site-settings";
 import {
   getViewCount,
   recordView,
@@ -67,12 +68,20 @@ export default async function PostPage({
   const t = locale === "en" ? en : zh;
 
   const readingTime = estimateReadingTime(body.content);
-  const [comments, commentCfg, viewCount, viewIdentity] = await Promise.all([
-    listApprovedComments(article.id),
-    getCommentConfig(),
-    getViewCount(article.id),
-    resolveViewIdentity(),
-  ]);
+  const [comments, commentCfg, viewCount, viewIdentity, effectiveSettings] =
+    await Promise.all([
+      listApprovedComments(article.id),
+      getCommentConfig(),
+      getViewCount(article.id),
+      resolveViewIdentity(),
+      getEffectiveSiteSettings(),
+    ]);
+
+  // 评论对游客可见开关（需求 4.2）：关闭时游客页面完全不渲染评论区——
+  // 标题/列表/提交框/空状态/"暂无评论"提示一律不出现，也不暴露任何评论
+  // 内容与"已关闭"提示；管理员本人浏览（预览/调试）不受影响。
+  const showComments =
+    effectiveSettings.commentsVisibleToGuests || viewIdentity.isAdmin;
 
   // 阅读量异步写入：不阻塞页面响应（修复审核报告 P1-7，此前从未接线）。
   // 管理员本人浏览不计入；24h 内同身份只计一次（ArticleViewDedup 去重桶）。
@@ -168,21 +177,25 @@ export default async function PostPage({
         )}
       </Reveal>
 
-      {/* 官网内容分隔母题：细线中央一枚小蓝三角 */}
-      <div className="mt-10 flex items-center gap-3" aria-hidden>
-        <span className="ba-rule-dashed h-px flex-1" />
-        <span className="ba-tri h-3 w-3.5" />
-        <span className="ba-rule-dashed h-px flex-1" />
-      </div>
+      {showComments && (
+        <>
+          {/* 官网内容分隔母题：细线中央一枚小蓝三角 */}
+          <div className="mt-10 flex items-center gap-3" aria-hidden>
+            <span className="ba-rule-dashed h-px flex-1" />
+            <span className="ba-tri h-3 w-3.5" />
+            <span className="ba-rule-dashed h-px flex-1" />
+          </div>
 
-      <div className="mt-8">
-        <CommentSection
-          slug={slug}
-          initialComments={comments}
-          maxLength={commentCfg.maxLength}
-          captchaSiteKey={process.env.NEXT_PUBLIC_CAPTCHA_SITE_KEY || ""}
-        />
-      </div>
+          <div className="mt-8">
+            <CommentSection
+              slug={slug}
+              initialComments={comments}
+              maxLength={commentCfg.maxLength}
+              captchaSiteKey={process.env.NEXT_PUBLIC_CAPTCHA_SITE_KEY || ""}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }

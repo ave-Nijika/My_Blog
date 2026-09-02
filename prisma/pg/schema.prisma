@@ -25,6 +25,7 @@ model SiteSettings {
   commentBodyMaxBytes     Int    @default(10000)
   autoBanWarningThreshold  Int    @default(3)
   allowRegexOnlyOnLlmFailure Boolean @default(false)
+  commentsVisibleToGuests    Boolean @default(true)
   aboutNotes   String?
   aboutContacts String?
   llmProviders String?

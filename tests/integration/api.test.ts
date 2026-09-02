@@ -579,6 +579,50 @@ describe("评论审核闭环与阅读量", () => {
   });
 });
 
+describe("评论游客可见开关", () => {
+  /** 剥离 <script>（RSC flight 数据/chunk 文件名属字典/配置项范畴），只看可见 DOM 语义 */
+  function visibleDom(html: string): string {
+    return html.replace(/<script[\s\S]*?<\/script>/gi, "");
+  }
+
+  it("开关关闭：游客文章页不出现任何评论语义，管理员仍可见", async () => {
+    // 通过后台 API 关闭（PUT 立即失效服务端设置缓存，规避 5s TTL 竞态）
+    const put = await req("/api/admin/site-settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+      body: JSON.stringify({ commentsVisibleToGuests: false }),
+    });
+    expect(put.status).toBe(200);
+
+    // 游客（无 cookie）：评论区标题/列表/提交框/空状态一概不渲染
+    const guest = await req("/posts/hello-world", {}, { useJar: false });
+    expect(guest.status).toBe(200);
+    const guestDom = visibleDom(await guest.text());
+    expect(guestDom).not.toMatch(/comment/i);
+    expect(guestDom).not.toContain("评论");
+
+    // 管理员（登录态）：预览/调试不受开关影响，评论区仍完整渲染
+    const adminPage = await req("/posts/hello-world");
+    expect(adminPage.status).toBe(200);
+    expect(visibleDom(await adminPage.text())).toContain('id="comment-body"');
+  });
+
+  it("开关开启：游客文章页恢复正常渲染评论区", async () => {
+    const put = await req("/api/admin/site-settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+      body: JSON.stringify({ commentsVisibleToGuests: true }),
+    });
+    expect(put.status).toBe(200);
+
+    const guest = await req("/posts/hello-world", {}, { useJar: false });
+    expect(guest.status).toBe(200);
+    const guestDom = visibleDom(await guest.text());
+    expect(guestDom).toContain('id="comment-body"');
+    expect(guestDom).toContain("评论");
+  });
+});
+
 describe("登录限流（最后执行，避免污染 IP 桶）", () => {
   it("连续 5 次失败后锁定：第 6 次即使密码正确也 429", async () => {
     for (let i = 0; i < 5; i++) {

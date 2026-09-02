@@ -21,10 +21,28 @@ export interface EffectiveCommentConfig {
   rateMaxAttempts: number;
   autoBanWarningThreshold: number;
   allowRegexOnlyOnLlmFailure: boolean;
+  /** 评论对游客可见（关闭时文章页完全不渲染评论区，仅管理员仍可见） */
+  commentsVisibleToGuests: boolean;
 }
 
 const CACHE_TTL_MS = 5_000;
-let cache: { value: SiteSettings | null; expiresAt: number } | null = null;
+
+/**
+ * 缓存槽挂到 globalThis：Next.js 下页面（RSC）与路由处理器可能各自持有
+ * 本模块的实例，模块内 `let cache` 会让 PUT 后的 invalidateSiteSettingsCache()
+ * 只清掉调用方那一份，另一份在 TTL 窗口内继续返回旧设置（游客开关因此延迟生效）。
+ * 共享同一槽位后，失效对全部实例生效；不改变"5 秒进程内缓存"的既有机制。
+ */
+type SiteSettingsCache = { value: SiteSettings | null; expiresAt: number } | null;
+const CACHE_SLOT_KEY = "__siteSettingsProcessCache";
+
+function readCacheSlot(): SiteSettingsCache {
+  return ((globalThis as Record<string, unknown>)[CACHE_SLOT_KEY] as SiteSettingsCache) ?? null;
+}
+
+function writeCacheSlot(slot: SiteSettingsCache): void {
+  (globalThis as Record<string, unknown>)[CACHE_SLOT_KEY] = slot;
+}
 
 function envInt(name: string, fallback: number): number {
   const v = process.env[name]?.trim();
@@ -35,21 +53,22 @@ function envInt(name: string, fallback: number): number {
 
 export async function loadRow(): Promise<SiteSettings | null> {
   const now = Date.now();
-  if (cache && cache.expiresAt > now) return cache.value;
+  const cached = readCacheSlot();
+  if (cached && cached.expiresAt > now) return cached.value;
   try {
     const row = await db.siteSettings.findFirst();
-    cache = { value: row, expiresAt: now + CACHE_TTL_MS };
+    writeCacheSlot({ value: row, expiresAt: now + CACHE_TTL_MS });
     return row;
   } catch {
     // DB 不可用时回退 env（并短暂缓存空值避免每次请求都撞错误）
-    cache = { value: null, expiresAt: now + CACHE_TTL_MS };
+    writeCacheSlot({ value: null, expiresAt: now + CACHE_TTL_MS });
     return null;
   }
 }
 
 /** 后台保存后调用，立刻失效缓存。 */
 export function invalidateSiteSettingsCache(): void {
-  cache = null;
+  writeCacheSlot(null);
 }
 
 export async function getEffectiveSiteSettings(): Promise<EffectiveCommentConfig> {
@@ -64,6 +83,7 @@ export async function getEffectiveSiteSettings(): Promise<EffectiveCommentConfig
     autoBanWarningThreshold:
       row?.autoBanWarningThreshold ?? envInt("COMMENT_AUTO_BAN_THRESHOLD", 3),
     allowRegexOnlyOnLlmFailure: row?.allowRegexOnlyOnLlmFailure ?? false,
+    commentsVisibleToGuests: row?.commentsVisibleToGuests ?? true,
   };
 }
 

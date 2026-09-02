@@ -23,6 +23,7 @@ type Settings = {
   commentBodyMaxBytes: number;
   autoBanWarningThreshold: number;
   allowRegexOnlyOnLlmFailure: boolean;
+  commentsVisibleToGuests: boolean;
   aboutNotes: string | null;
   aboutContacts: AboutContactCardInput[] | null;
   nickname: string;
@@ -163,6 +164,25 @@ export function SiteSettingsForm({ initial }: { initial: Settings }) {
             </span>
             <span className="text-xs text-slate-400">
               （默认关闭：LLM 失败一律转人工 pending；开启后仅当正则未标记可疑才放行）
+            </span>
+          </label>
+          <label className="flex items-center gap-2 text-sm sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={values.commentsVisibleToGuests}
+              onChange={(e) =>
+                setValues((prev) => ({
+                  ...prev,
+                  commentsVisibleToGuests: e.target.checked,
+                }))
+              }
+              className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-400"
+            />
+            <span className="font-medium text-slate-700 dark:text-slate-200">
+              评论对游客可见
+            </span>
+            <span className="text-xs text-slate-400">
+              （默认开启；关闭后游客访问文章页完全看不到评论区，管理员登录仍可见）
             </span>
           </label>
         </div>

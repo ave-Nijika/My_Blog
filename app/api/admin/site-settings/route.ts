@@ -24,6 +24,7 @@ const updateSchema = z.object({
   commentBodyMaxBytes: z.number().int().min(256).max(200000).optional(),
   autoBanWarningThreshold: z.number().int().min(1).max(100).optional(),
   allowRegexOnlyOnLlmFailure: z.boolean().optional(),
+  commentsVisibleToGuests: z.boolean().optional(),
   aboutNotes: z.string().max(5000).nullable().optional(),
   aboutContacts: z
     .array(
@@ -69,6 +70,7 @@ function toJson(row: {
   commentBodyMaxBytes: number;
   autoBanWarningThreshold: number;
   allowRegexOnlyOnLlmFailure: boolean;
+  commentsVisibleToGuests: boolean;
   updatedAt: Date;
 }) {
   return {
@@ -79,6 +81,7 @@ function toJson(row: {
     commentBodyMaxBytes: row.commentBodyMaxBytes,
     autoBanWarningThreshold: row.autoBanWarningThreshold,
     allowRegexOnlyOnLlmFailure: row.allowRegexOnlyOnLlmFailure,
+    commentsVisibleToGuests: row.commentsVisibleToGuests,
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -127,6 +130,9 @@ export const PUT = wrap(async (req: NextRequest) => {
       ...(data.allowRegexOnlyOnLlmFailure !== undefined
         ? { allowRegexOnlyOnLlmFailure: data.allowRegexOnlyOnLlmFailure }
         : {}),
+      ...(data.commentsVisibleToGuests !== undefined
+        ? { commentsVisibleToGuests: data.commentsVisibleToGuests }
+        : {}),
       ...(data.aboutNotes !== undefined
         ? { aboutNotes: data.aboutNotes === null ? null : data.aboutNotes.trim() || null }
         : {}),
@@ -166,6 +172,7 @@ export const PUT = wrap(async (req: NextRequest) => {
         commentBodyMaxBytes: current.commentBodyMaxBytes,
         autoBanWarningThreshold: current.autoBanWarningThreshold,
         allowRegexOnlyOnLlmFailure: current.allowRegexOnlyOnLlmFailure,
+        commentsVisibleToGuests: current.commentsVisibleToGuests,
       },
       after: {
         commentCooldownSeconds: next.commentCooldownSeconds,
@@ -174,6 +181,7 @@ export const PUT = wrap(async (req: NextRequest) => {
         commentBodyMaxBytes: next.commentBodyMaxBytes,
         autoBanWarningThreshold: next.autoBanWarningThreshold,
         allowRegexOnlyOnLlmFailure: next.allowRegexOnlyOnLlmFailure,
+        commentsVisibleToGuests: next.commentsVisibleToGuests,
       },
     },
   });
