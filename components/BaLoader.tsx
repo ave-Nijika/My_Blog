@@ -61,8 +61,8 @@ export function BaLoader() {
       >
         <div className="ba-loader__inner">
           <span className="ba-tri ba-loader__tri" />
-          <span className="ba-font-round ba-loader__title">拾光笔记</span>
-          <span className="ba-font-display ba-loader__sub">LIGHT NOTES</span>
+          <span className="ba-font-round ba-loader__title">普拉纳的手账</span>
+          <span className="ba-font-display ba-loader__sub">PLANA'S NOTEBOOK</span>
           <div className="ba-loader__bar">
             <span />
           </div>

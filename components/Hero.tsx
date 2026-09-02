@@ -6,8 +6,8 @@ import { useLocale } from "@/lib/i18n/context";
 import type { CSSProperties } from "react";
 
 const SLOGANS = {
-  "zh-CN": "记录成长的每一刻，拾取知识的每一缕光",
-  en: "Capture every moment of growth, gather every ray of knowledge",
+  "zh-CN": "手账一页，记录成长的每一刻",
+  en: "Every page captures a moment of growth",
 } as const;
 
 /**
@@ -49,10 +49,10 @@ export function Hero() {
 
           <h1 className="ba-hero-in mb-2" style={{ "--d": "0.15s" } as CSSProperties}>
             <span className="ba-font-round block text-5xl leading-tight text-white drop-shadow-[0_4px_18px_rgba(9,18,34,0.55)] sm:text-6xl lg:text-7xl">
-              拾光笔记
+              普拉纳的手账
             </span>
             <span className="ba-font-display mt-3 block text-[11px] tracking-[0.5em] text-[rgb(var(--ba-yellow))] sm:text-sm">
-              LIGHT NOTES
+              PLANA'S NOTEBOOK
             </span>
           </h1>
 

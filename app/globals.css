@@ -6,7 +6,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* ============================================================
-   拾光笔记 · BA 官网视觉语言设计系统（FE 重构 S1）
+   普拉纳的手账 · BA 官网视觉语言设计系统（FE 重构 S1）
    参照：碧蓝档案国服官网 bluearchive-cn.com 实机视觉分析
    截图：docs/fe-redesign/reference/
    原则：
