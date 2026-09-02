@@ -547,22 +547,33 @@ export async function updatePost(
       `content: update article ${existing.id} (${nextInput.slug})`
     );
   } catch (error) {
-    // git 失败时完整回滚：恢复旧文件、删除新文件。
-    if (error instanceof GitCommitError && slugChanged) {
-      try {
-        await fs.rm(path.join(POSTS_DIR(), `${nextInput.slug}.md`), { force: true });
-        if (oldRaw !== null) {
-          await fs.writeFile(
-            path.join(POSTS_DIR(), `${existing.slug}.md`),
-            oldRaw,
-            "utf-8"
-          );
+    if (error instanceof GitCommitError) {
+      // 内容无变化时 git 报 "nothing to commit"：不算失败，跳过提交。
+      // 后续 ArticleVersion 因 newContentHash === oldContentHash 也不会创建，
+      // 文件已写盘，DB 同步由 syncAfterChange 完成，结果与正常提交一致。
+      if (error.code === "NOTHING_TO_COMMIT") {
+        commit = { commitSha: "", message: "" };
+      } else {
+        // 其他 git 失败时完整回滚：恢复旧文件、删除新文件（仅改 slug 场景）。
+        if (slugChanged) {
+          try {
+            await fs.rm(path.join(POSTS_DIR(), `${nextInput.slug}.md`), { force: true });
+            if (oldRaw !== null) {
+              await fs.writeFile(
+                path.join(POSTS_DIR(), `${existing.slug}.md`),
+                oldRaw,
+                "utf-8"
+              );
+            }
+          } catch {
+            // ignore
+          }
         }
-      } catch {
-        // ignore
+        throw error;
       }
+    } else {
+      throw error;
     }
-    throw error;
   }
 
   // 修复审核报告 P1-2：改 slug 原地更新 DB 行的 slug，保留 article id 与全部

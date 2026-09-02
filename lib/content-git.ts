@@ -101,7 +101,14 @@ export async function commitFiles(
     const stderr =
       (error as { stderr?: string }).stderr?.toString() ??
       (error as Error).message;
-    if (/nothing to commit/i.test(stderr)) {
+    // "nothing to commit" 由 git 输出到 stdout（而非 stderr），
+    // 必须同时检查 stdout，否则无变更提交会被误报为 GIT_FAILED。
+    const stdout =
+      (error as { stdout?: string }).stdout?.toString() ?? "";
+    if (
+      /nothing to commit/i.test(stderr) ||
+      /nothing to commit/i.test(stdout)
+    ) {
       throw new GitCommitError(
         "没有需要提交的内容（文件未发生变化）",
         "NOTHING_TO_COMMIT"
@@ -169,7 +176,14 @@ export async function removeFiles(
     const stderr =
       (error as { stderr?: string }).stderr?.toString() ??
       (error as Error).message;
-    if (/nothing to commit/i.test(stderr)) {
+    // "nothing to commit" 由 git 输出到 stdout（而非 stderr），
+    // 必须同时检查 stdout，否则无变更提交会被误报为 GIT_FAILED。
+    const stdout =
+      (error as { stdout?: string }).stdout?.toString() ?? "";
+    if (
+      /nothing to commit/i.test(stderr) ||
+      /nothing to commit/i.test(stdout)
+    ) {
       throw new GitCommitError(
         "没有需要提交的内容（文件未发生变化）",
         "NOTHING_TO_COMMIT"
