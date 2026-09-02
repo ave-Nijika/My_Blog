@@ -37,6 +37,10 @@ export interface AdminCommentListItem {
   aiCategory: string | null;
   aiReason: string | null;
   aiErrorCode: string | null;
+  /** 来自文章物理删除后的存档（DeletedComment） */
+  isFromDeletedArticle?: boolean;
+  /** 存档评论所属的已删文章标题（DeletedArticle.title） */
+  deletedArticleTitle?: string;
 }
 
 export interface AdminCommentListResult {
@@ -48,6 +52,8 @@ export interface AdminCommentListResult {
 
 export interface AdminCommentListParams {
   status?: string;
+  /** normal（默认）= 正常评论；deleted = 已物理删除文章的评论存档 */
+  scope?: string;
   page: number;
   perPage: number;
 }
@@ -77,6 +83,9 @@ function buildStatusWhere(raw: string | undefined) {
 export async function listAdminComments(
   params: AdminCommentListParams
 ): Promise<AdminCommentListResult> {
+  if (params.scope === "deleted") {
+    return listDeletedArticleComments(params);
+  }
   const where = buildStatusWhere(params.status);
   const skip = Math.max((params.page - 1) * params.perPage, 0);
   const take = params.perPage;
@@ -110,6 +119,7 @@ export async function listAdminComments(
     aiCategory: r.aiCategory ?? null,
     aiReason: r.aiReason ?? null,
     aiErrorCode: r.aiErrorCode ?? null,
+    isFromDeletedArticle: false,
   }));
 
   return {
@@ -118,6 +128,68 @@ export async function listAdminComments(
     page: params.page,
     perPage: params.perPage,
   };
+}
+
+/**
+ * 已物理删除文章的评论存档（DeletedComment）：字段对齐 AdminCommentListItem
+ * 以便管理页复用同一张表；文章已删，标题取自 DeletedArticle 且不再提供链接。
+ */
+async function listDeletedArticleComments(
+  params: AdminCommentListParams
+): Promise<AdminCommentListResult> {
+  const where = buildStatusWhere(params.status);
+  const skip = Math.max((params.page - 1) * params.perPage, 0);
+  const take = params.perPage;
+
+  const [rows, total] = await Promise.all([
+    db.deletedComment.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+      include: {
+        article: { select: { title: true } },
+      },
+    }),
+    db.deletedComment.count({ where }),
+  ]);
+
+  const items: AdminCommentListItem[] = rows.map((r) => ({
+    id: r.id,
+    articleId: r.originalId,
+    articleSlug: "",
+    articleTitle: r.article?.title ?? "",
+    deletedArticleTitle: r.article?.title ?? "",
+    bodyText: r.bodyText,
+    status: r.status,
+    warningApplied: r.warningApplied,
+    createdAt: r.createdAt.toISOString(),
+    moderatedAt: r.moderatedAt ? r.moderatedAt.toISOString() : null,
+    moderatedBy: r.moderatedBy ?? null,
+    deletedAt: r.deletedAt ? r.deletedAt.toISOString() : null,
+    aiDecision: r.aiDecision ?? null,
+    aiCategory: r.aiCategory ?? null,
+    aiReason: r.aiReason ?? null,
+    aiErrorCode: r.aiErrorCode ?? null,
+    isFromDeletedArticle: true,
+  }));
+
+  return {
+    items,
+    total,
+    page: params.page,
+    perPage: params.perPage,
+  };
+}
+
+/**
+ * 物理删除一条已删文章的评论存档（DeletedComment 行真删）。
+ */
+export async function deleteArchivedComment(id: string) {
+  const existing = await db.deletedComment.findUnique({ where: { id } });
+  if (!existing) throw new CommentNotFoundError(id);
+  await db.deletedComment.delete({ where: { id } });
+  return existing;
 }
 
 export async function getAdminComment(id: string) {

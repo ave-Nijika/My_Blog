@@ -26,10 +26,11 @@ export async function GET(req: NextRequest) {
   const guard = await requireAdminApi();
   if (guard) return guard;
   const url = new URL(req.url);
+  const scope = url.searchParams.get("scope") ?? undefined;
   const status = url.searchParams.get("status") ?? undefined;
   const page = parseIntParam(url.searchParams.get("page"), 1, 1000);
   const perPage = parseIntParam(url.searchParams.get("perPage"), 20, 100);
-  const result = await listAdminComments({ status, page, perPage });
+  const result = await listAdminComments({ status, scope, page, perPage });
   return new Response(JSON.stringify(result), {
     status: 200,
     headers: { "Content-Type": "application/json" },

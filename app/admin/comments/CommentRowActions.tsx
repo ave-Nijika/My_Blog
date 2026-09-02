@@ -1,8 +1,10 @@
 "use client";
 
 /**
- * 评论列表行内操作：批准 / 拒绝 / 删除。
- * - 全部走 /api/admin/comments/[id]/* 端点（包了 CSRF + 权限）。
+ * 评论列表行内操作。
+ * - normal：批准 / 拒绝 / 删除（软删），走 /api/admin/comments/[id]/*。
+ * - deleted：已删文章的存档评论（DeletedComment）——文章已删，审核无意义，
+ *   只提供"物理删除"（DELETE /api/admin/deleted-comments/[id]）。
  * - 完成后调用 router.refresh() 让 server component 重新拉取列表。
  */
 import { useState, useTransition } from "react";
@@ -13,9 +15,10 @@ type Props = {
   commentId: string;
   status: string;
   deletedAt: string | null;
+  variant?: "normal" | "deleted";
 };
 
-export function CommentRowActions({ commentId, status, deletedAt }: Props) {
+export function CommentRowActions({ commentId, status, deletedAt, variant = "normal" }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +49,28 @@ export function CommentRowActions({ commentId, status, deletedAt }: Props) {
         setBusyAction(null);
       }
     });
+  }
+
+  // 已删文章的存档评论：只支持物理删除
+  if (variant === "deleted") {
+    return (
+      <div className="inline-flex flex-col items-end gap-1">
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => {
+            if (!window.confirm("确认物理删除这条存档评论？此操作不可撤销。")) return;
+            call(`/api/admin/deleted-comments/${commentId}`, "DELETE", "delete");
+          }}
+          className="rounded-md border border-rose-300 bg-rose-50 px-2.5 py-1 text-xs text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-60 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/40"
+        >
+          {busyAction === "delete" ? "删除中…" : "删除"}
+        </button>
+        {error ? (
+          <span className="text-xs text-rose-600 dark:text-rose-400">{error}</span>
+        ) : null}
+      </div>
+    );
   }
 
   const isDeleted = !!deletedAt;

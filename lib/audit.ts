@@ -264,6 +264,7 @@ export const AUDIT_ACTIONS = {
   TAXONOMY_TAG_CREATE: "taxonomy.tag.create",
   TAXONOMY_TAG_UPDATE: "taxonomy.tag.update",
   TAXONOMY_TAG_DELETE: "taxonomy.tag.delete",
+  DELETED_COMMENT_DELETE: "deleted_comment.delete",
   CREATE: "create",
   DELETE: "delete",
 } as const;

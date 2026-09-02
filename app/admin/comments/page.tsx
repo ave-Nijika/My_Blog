@@ -115,11 +115,13 @@ function renderAiCell(
 }
 
 function pageHref(
+  scope: "normal" | "deleted",
   status: StatusFilter,
   page: number,
   perPage: number
 ): string {
   const params = new URLSearchParams();
+  if (scope === "deleted") params.set("scope", "deleted");
   if (status !== "all") params.set("status", status);
   if (page > 1) params.set("page", String(page));
   if (perPage !== 20) params.set("perPage", String(perPage));
@@ -130,7 +132,12 @@ function pageHref(
 export default async function AdminCommentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; page?: string; perPage?: string }>;
+  searchParams: Promise<{
+    status?: string;
+    page?: string;
+    perPage?: string;
+    scope?: string;
+  }>;
 }) {
   await requireAdmin();
   // 后台双语（locale cookie SSR，与 dashboard 同款）
@@ -145,16 +152,17 @@ export default async function AdminCommentsPage({
     rejected: t.status.rejected,
     deleted: t.status.deleted,
   };
-  const { status: rawStatus, page: rawPage, perPage: rawPerPage } =
+  const { status: rawStatus, page: rawPage, perPage: rawPerPage, scope: rawScope } =
     await searchParams;
   const status = asFilter(rawStatus);
+  const scope = rawScope === "deleted" ? "deleted" : "normal";
   const page = Math.max(1, Number.parseInt(rawPage ?? "1", 10) || 1);
   const perPage = Math.min(
     100,
     Math.max(1, Number.parseInt(rawPerPage ?? "20", 10) || 20)
   );
 
-  const result = await listAdminComments({ status, page, perPage });
+  const result = await listAdminComments({ status, scope, page, perPage });
   const totalPages = Math.max(1, Math.ceil(result.total / perPage));
 
   return (
@@ -178,13 +186,44 @@ export default async function AdminCommentsPage({
         <LogoutButton />
       </header>
 
+      {/* scope 标签页：正常评论 / 已删文章评论 */}
+      <nav className="flex flex-wrap gap-2 text-sm">
+        {([["normal", t.scopeNormal], ["deleted", t.scopeDeleted]] as const).map(
+          ([key, label]) => {
+            const active = scope === key;
+            return (
+              <Link
+                key={key}
+                href={
+                  key === "normal"
+                    ? status === "all"
+                      ? "/admin/comments"
+                      : `/admin/comments?status=${status}`
+                    : status === "all"
+                      ? "/admin/comments?scope=deleted"
+                      : `/admin/comments?scope=deleted&status=${status}`
+                }
+                className={
+                  "rounded-md border px-3 py-1.5 transition-colors " +
+                  (active
+                    ? "border-[rgb(var(--ba-primary))] bg-[color:rgb(var(--ba-primary-soft))] text-[color:rgb(var(--ba-primary))] dark:text-sky-200"
+                    : "border-slate-200 text-slate-600 hover:border-sky-300 hover:text-sky-600 dark:border-slate-700 dark:text-slate-300 dark:hover:border-sky-700 dark:hover:text-sky-300")
+                }
+              >
+                {label}
+              </Link>
+            );
+          }
+        )}
+      </nav>
+
       <nav className="flex flex-wrap gap-2 text-sm">
         {VALID_STATUS.map((s) => {
           const active = s === status;
           return (
             <Link
               key={s}
-              href={s === "all" ? "/admin/comments" : `/admin/comments?status=${s}`}
+              href={pageHref(scope, s, 1, perPage)}
               className={
                 "rounded-md border px-3 py-1.5 transition-colors " +
                 (active
@@ -232,7 +271,16 @@ export default async function AdminCommentsPage({
                     </div>
                   </td>
                   <td className="px-4 py-3 text-xs">
-                    {c.articleSlug ? (
+                    {c.isFromDeletedArticle ? (
+                      <div className="flex flex-col items-start gap-1">
+                        <span className="text-slate-700 dark:text-slate-200">
+                          {c.deletedArticleTitle || "—"}
+                        </span>
+                        <span className="inline-flex rounded bg-rose-100 px-2 py-0.5 text-[10px] text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                          {t.deletedArticleBadge}
+                        </span>
+                      </div>
+                    ) : c.articleSlug ? (
                       <Link
                         href={`/posts/${c.articleSlug}`}
                         className="text-sky-600 hover:underline dark:text-sky-300"
@@ -272,6 +320,7 @@ export default async function AdminCommentsPage({
                       commentId={c.id}
                       status={c.status}
                       deletedAt={c.deletedAt}
+                      variant={c.isFromDeletedArticle ? "deleted" : "normal"}
                     />
                   </td>
                 </tr>
@@ -289,7 +338,7 @@ export default async function AdminCommentsPage({
           <div className="flex gap-2">
             {page > 1 ? (
               <Link
-                href={pageHref(status, page - 1, perPage)}
+                href={pageHref(scope, status, page - 1, perPage)}
                 className="rounded-md border border-slate-300 px-3 py-1 transition-colors hover:border-sky-300 hover:text-sky-600 dark:border-slate-700 dark:hover:border-sky-700 dark:hover:text-sky-300"
               >
                 {a.pagination.prev}
@@ -297,7 +346,7 @@ export default async function AdminCommentsPage({
             ) : null}
             {page < totalPages ? (
               <Link
-                href={pageHref(status, page + 1, perPage)}
+                href={pageHref(scope, status, page + 1, perPage)}
                 className="rounded-md border border-slate-300 px-3 py-1 transition-colors hover:border-sky-300 hover:text-sky-600 dark:border-slate-700 dark:hover:border-sky-700 dark:hover:text-sky-300"
               >
                 {a.pagination.next}
