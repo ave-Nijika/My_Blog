@@ -25,8 +25,9 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 
 # 审核报告 P0-6：git 是后台"保存即 Git 提交"的硬依赖；
-# prisma CLI 用于容器内执行迁移（见 docs/deploy-aliyun.md）。
-RUN apk add --no-cache libc6-compat git \
+# prisma CLI 用于容器内执行迁移（见 docs/deploy-aliyun.md）；
+# su-exec 用于 entrypoint 以 root 完成 chown 后降权运行主进程。
+RUN apk add --no-cache libc6-compat git su-exec \
     && npm install -g --no-audit --no-fund prisma@6.19.3
 
 RUN addgroup --system --gid 1001 nodejs
@@ -49,13 +50,16 @@ RUN chmod +x /app/docker/entrypoint.sh \
     && mkdir -p /app/uploads /app/db \
     && chown -R nextjs:nodejs /app
 
-USER nextjs
+# 注意：此处不能设 USER nextjs —— entrypoint 需以 root 执行 chown 修正命名卷
+# （content-repo / uploads-data 首次创建为 root 属主）内数据属主，再经 su-exec
+# 降权为 nextjs:nodejs 运行主进程（见 docker/entrypoint.sh）。
 
 EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# entrypoint 负责把 /app/content 初始化为 git 仓库（幂等），再启动应用
+# entrypoint 以 root 运行：chown 修正卷内属主 + 幂等初始化 content git 仓库，
+# 随后 su-exec 降权为 nextjs:nodejs 启动应用
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
 CMD ["node", "server.js"]
