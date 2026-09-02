@@ -9,7 +9,10 @@ import { LocaleProvider } from "@/lib/i18n/context";
 import { ThemeProvider } from "@/lib/i18n/theme-context";
 import { ThemeInitScript } from "@/components/ThemeInitScript";
 import { BaLoader } from "@/components/BaLoader";
-import { RippleProvider } from "@/components/RippleProvider";
+import { ClickFX } from "@/components/ClickFX";
+// 原生涟漪已暂停使用（2026-09-03，改用 ba-click-fx 全局鼠标特效）。
+// 如需恢复共存：取消下方注释并重新启用 RippleProvider 包裹。
+// import { RippleProvider } from "@/components/RippleProvider";
 import { RouteProgress } from "@/components/RouteProgress";
 import { BaCursor } from "@/components/BaCursor";
 import { Header } from "@/components/Header";
@@ -100,7 +103,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             <Header links={links} locale={locale} />
             <main className="flex-1 w-full relative z-10">
               {/* 官网三角网格纹理由 body::before 全局铺设，页面内容在其上 */}
-              <RippleProvider>{children}</RippleProvider>
+              {/* 原生涟漪已暂停（改用 ba-click-fx）：<RippleProvider>{children}</RippleProvider> */}
+              {children}
+              <ClickFX />
             </main>
             <Footer siteConfig={siteConfig} contacts={footerContacts} />
           </LocaleProvider>
