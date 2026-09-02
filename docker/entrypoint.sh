@@ -14,7 +14,11 @@
 #    gitlink（embedded repository）提交。
 # 4) /app 整体归主 nextjs：git 2.35+ 的 dubious ownership 检查要求仓库根
 #    （/app）属主与运行用户一致，否则 git 拒绝执行（fatal: dubious ownership）。
-# 5) 末尾 exec su-exec 降权为 nextjs:nodejs 运行主进程（CMD）。
+# 5) 自愈（2026-09-03）：内容卷持久化但 .git 随容器重建而丢失，若初始化提交
+#    曾失败，content/posts 下会出现游离文件（有文件无 git 跟踪）。每次启动
+#    统一 git add 并提交一次，保证磁盘文件与 git 历史对齐，避免后续
+#    "保存/发布" 报 git 失败。
+# 6) 末尾 exec su-exec 降权为 nextjs:nodejs 运行主进程（CMD）。
 set -e
 
 chown -R nextjs:nodejs /app/content 2>/dev/null || true
@@ -35,13 +39,21 @@ if [ -d "$REPO_DIR" ] && [ ! -e "$REPO_DIR/.git" ]; then
   git init -q -b main
   git config user.name "blog-admin-bot"
   git config user.email "blog-admin-bot@users.noreply.localhost"
-  git add content/
-  # 目录为空（全新卷）时没有可提交内容，允许失败继续
-  git commit -q -m "chore: initialize content repository" || true
   echo "[entrypoint] content git 仓库初始化完成。"
   # 本段 git 命令以 root 执行，.git 内新对象属主为 root，再归正一次
   chown -R nextjs:nodejs "$REPO_DIR/.git" 2>/dev/null || true
 fi
+
+# 自愈：把内容卷里所有文章文件纳入 git（幂等：无变化时 commit 失败被吞掉）。
+# 以 nextjs 身份执行，确保 .git 属主正确且后续应用进程有写权限。
+cd "$REPO_DIR"
+su-exec nextjs:nodejs sh -c '
+  set +e
+  git add content/ 2>/dev/null
+  git -c user.name=blog-admin-bot -c user.email=blog-admin-bot@users.noreply.localhost \
+    commit -q -m "chore: sync content files into git" --author "blog-admin-bot <blog-admin-bot@users.noreply.localhost>" 2>/dev/null
+  exit 0
+'
 
 # 降权运行主进程（应用不以 root 跑，保持原 USER nextjs 的安全语义）
 exec su-exec nextjs:nodejs "$@"
