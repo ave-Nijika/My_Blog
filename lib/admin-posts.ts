@@ -736,9 +736,15 @@ export async function deletePost(
       },
     });
   } catch (error) {
-    // 文件此前已被删除（如同步引擎归档场景）时 git 无变更可提交：
-    // 存档与物理删除均已完成，吞掉 NOTHING_TO_COMMIT，其余 git 错误照抛。
-    if (!(error instanceof GitCommitError && error.code === "NOTHING_TO_COMMIT")) {
+    // 物理删除与存档已完成（事务已提交、磁盘文件已删），git commit 只是
+    // 版本历史记录，失败不应阻断删除：NOTHING_TO_COMMIT（无变更）与
+    // GIT_FAILED（git 命令执行失败）都吞掉；其余未知错误照抛。
+    if (
+      error instanceof GitCommitError &&
+      (error.code === "NOTHING_TO_COMMIT" || error.code === "GIT_FAILED")
+    ) {
+      // 吞掉，删除结果不受影响
+    } else {
       throw error;
     }
   }

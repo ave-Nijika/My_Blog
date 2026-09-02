@@ -117,6 +117,23 @@ export function PostEditor({ initial, mode }: Props) {
   }
 
   function buildPayload(targetStatus: "draft" | "public" | "private") {
+    // 发布时间语义：
+    // - 首次发布（新建 或 草稿→发布）：publishedAt 为空则自动设为当前时间，
+    //   保证"发布时间"在第一次发布时就落定，而非留空导致前台不显示
+    // - 已发布文章的后续"更新发布"：保留原发布时间，不随输入框改动
+    //   （"更新于"由服务端 updatedAt 自动记录，不在表单内修改）
+    let publishedAt: string | null;
+    if (targetStatus === "public") {
+      if (mode === "edit" && initial.status === "public") {
+        publishedAt = initial.publishedAt
+          ? new Date(initial.publishedAt).toISOString()
+          : new Date().toISOString();
+      } else {
+        publishedAt = fromInputDateTime(values.publishedAt) || new Date().toISOString();
+      }
+    } else {
+      publishedAt = fromInputDateTime(values.publishedAt);
+    }
     return {
       slug: values.slug.trim(),
       title: values.title.trim(),
@@ -125,7 +142,7 @@ export function PostEditor({ initial, mode }: Props) {
       category: values.category.trim(),
       cover: "",
       pinned: values.pinned,
-      publishedAt: fromInputDateTime(values.publishedAt),
+      publishedAt,
       tags: values.tagsInput
         .split(/[,，]/)
         .map((s) => s.trim())
