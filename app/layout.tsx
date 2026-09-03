@@ -10,6 +10,7 @@ import { ThemeProvider } from "@/lib/i18n/theme-context";
 import { ThemeInitScript } from "@/components/ThemeInitScript";
 import { BaLoader } from "@/components/BaLoader";
 import { ClickFX } from "@/components/ClickFX";
+import { DeviceModeToggle } from "@/components/DeviceModeToggle";
 // 原生涟漪已暂停使用（2026-09-03，改用 ba-click-fx 全局鼠标特效）。
 // 如需恢复共存：取消下方注释并重新启用 RippleProvider 包裹。
 // import { RippleProvider } from "@/components/RippleProvider";
@@ -106,6 +107,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               {/* 原生涟漪已暂停（改用 ba-click-fx）：<RippleProvider>{children}</RippleProvider> */}
               {children}
               <ClickFX />
+              <DeviceModeToggle />
             </main>
             <Footer siteConfig={siteConfig} contacts={footerContacts} />
           </LocaleProvider>
