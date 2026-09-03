@@ -24,6 +24,7 @@ import { DEFAULT_LOCALE } from "@/lib/i18n/config";
 import { zh } from "@/lib/i18n/zh";
 import { en } from "@/lib/i18n/en";
 import { CommentSection } from "@/components/CommentSection";
+import { CodeBlock } from "@/components/CodeBlock";
 import { LocaleDate } from "@/components/LocaleDate";
 import { Reveal } from "@/components/Reveal";
 
@@ -158,7 +159,17 @@ export default async function PostPage({
         </header>
 
         <div className="prose-content mt-8">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeHighlight]}
+            components={{
+              // 代码块增强（悬停复制/展开、触屏长按复制）——仅文章详情页启用，
+              // 编辑页预览不受影响；node prop 不可跨 RSC 序列化，不下传
+              pre: ({ children, className }) => (
+                <CodeBlock className={className}>{children}</CodeBlock>
+              ),
+            }}
+          >
             {body.content}
           </ReactMarkdown>
         </div>

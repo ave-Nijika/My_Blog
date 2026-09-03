@@ -1547,6 +1547,128 @@ a.ba-button-primary:hover {
   border: none;
 }
 
+/* --------------------------------------------
+   代码块增强（components/CodeBlock.tsx，仅文章详情页）
+   复制/展开工具条 + 触屏长按复制；不改动上方 .prose-content pre
+   既有视觉（背景/圆角/阴影/内边距），只新增以下规则。
+   -------------------------------------------- */
+.prose-content .code-block {
+  position: relative;
+}
+
+/* 收起态默认限高（让「展开」有明确语义）；展开态上限 80vh */
+.prose-content .code-block pre {
+  max-height: 24rem;
+  overflow: auto;
+}
+
+.prose-content .code-block.is-expanded pre {
+  max-height: 80vh;
+}
+
+/* 右上角工具条：平时不可见不占位，悬停/键盘聚焦/展开态显示 */
+.code-block-toolbar {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  z-index: 2;
+}
+
+.code-block:hover .code-block-toolbar,
+.code-block:focus-within .code-block-toolbar,
+.code-block.is-expanded .code-block-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 极简图标按钮：无底色无边框，低灰度，hover 变亮一档 */
+.code-block-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: #8fa3c0;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.code-block-btn:hover {
+  color: #e6eefb;
+}
+
+.code-block-btn:focus-visible {
+  color: #e6eefb;
+  outline: 1px solid rgba(230, 238, 251, 0.5);
+  outline-offset: 1px;
+}
+
+/* 复制成功反馈态：低饱和绿，短暂显示后恢复 */
+.code-block-btn.is-copied {
+  color: #8fd6a4;
+}
+
+/* 触屏长按复制的轻提示 */
+.code-copy-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18%;
+  transform: translateX(-50%);
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  background: rgba(9, 18, 34, 0.88);
+  color: #dbe7f8;
+  font-size: var(--font-size-caption);
+  z-index: 60;
+  pointer-events: none;
+  animation: code-copy-toast-in 0.18s ease;
+}
+
+@keyframes code-copy-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* 触屏：不渲染/不显示悬停按钮组；长按复制优先于文字选择 */
+@media (pointer: coarse) {
+  .code-block-toolbar {
+    display: none;
+  }
+
+  .prose-content .code-block pre {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .code-block-toolbar,
+  .code-block-btn {
+    transition: none;
+  }
+
+  .code-copy-toast {
+    animation: none;
+  }
+}
+
 .prose-content img {
   max-width: 100%;
   height: auto;
