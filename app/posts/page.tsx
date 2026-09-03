@@ -1,7 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { countPublicArticles, getPublicArticlesPage } from "@/lib/queries";
+import { db } from "@/lib/db";
+import {
+  countPublicArticles,
+  getPublicArticles,
+  getPublicArticlesPage,
+  type ArticleWithTags,
+} from "@/lib/queries";
 import { DEFAULT_LOCALE } from "@/lib/i18n/config";
 import { zh } from "@/lib/i18n/zh";
 import { en } from "@/lib/i18n/en";
@@ -23,24 +29,64 @@ function resolvePage(raw: string | undefined): number {
 export default async function PostsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; category?: string }>;
 }) {
   // 与 layout 同款 SSR 读 cookie（双语一致红线）
   const locale =
     (await cookies()).get("locale")?.value === "en" ? "en" : DEFAULT_LOCALE;
   const t = locale === "en" ? en : zh;
 
-  const { page: rawPage } = await searchParams;
+  const { page: rawPage, category: rawCategory } = await searchParams;
   const page = resolvePage(rawPage);
-  const [posts, total] = await Promise.all([
-    getPublicArticlesPage(page, PER_PAGE),
-    countPublicArticles(),
-  ]);
-  const totalPages = Math.max(Math.ceil(total / PER_PAGE), 1);
-  const safePage = Math.min(page, totalPages);
 
-  const visiblePosts =
-    safePage === page ? posts : await getPublicArticlesPage(safePage, PER_PAGE);
+  // 分类聚合（与 GET /api/posts/categories 同一查询）：数据来自 DB 中公开
+  // 文章实际用到的分类，实时无缓存——新建/删除/改分类后 chip 自然增减
+  const categoryRows = await db.article.groupBy({
+    by: ["category"],
+    where: { status: "public", category: { not: "" } },
+    _count: { category: true },
+    orderBy: [{ _count: { category: "desc" } }, { category: "asc" }],
+  });
+  const categories = categoryRows.map((r) => ({
+    name: r.category,
+    count: r._count.category,
+  }));
+  // URL 里的分类已不存在（文章全删/改分类后的旧链接）时按"全部"处理
+  const requestedCategory = (rawCategory ?? "").trim();
+  const activeCategory = categories.some((c) => c.name === requestedCategory)
+    ? requestedCategory
+    : "";
+
+  let visiblePosts: ArticleWithTags[];
+  let total: number;
+  let totalPages: number;
+  let safePage: number;
+
+  if (activeCategory) {
+    // 选中分类：公开文章内存过滤 + 分页（博客量级小，等价于查询过滤；
+    // 不动 lib/queries 既有函数签名）
+    const all = await getPublicArticles();
+    const filtered = all.filter((p) => p.category === activeCategory);
+    total = filtered.length;
+    totalPages = Math.max(Math.ceil(total / PER_PAGE), 1);
+    safePage = Math.min(page, totalPages);
+    visiblePosts = filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
+  } else {
+    const [posts, count] = await Promise.all([
+      getPublicArticlesPage(page, PER_PAGE),
+      countPublicArticles(),
+    ]);
+    totalPages = Math.max(Math.ceil(count / PER_PAGE), 1);
+    safePage = Math.min(page, totalPages);
+    visiblePosts =
+      safePage === page ? posts : await getPublicArticlesPage(safePage, PER_PAGE);
+    total = count;
+  }
+
+  const pageHref = (p: number) =>
+    activeCategory
+      ? `/posts?page=${p}&category=${encodeURIComponent(activeCategory)}`
+      : `/posts?page=${p}`;
 
   return (
     <div className="relative mx-auto max-w-4xl px-4 py-14 sm:px-6">
@@ -82,6 +128,41 @@ export default async function PostsPage({
         </form>
       </Reveal>
 
+      {/* 分类 chip 栏：数据实时来自公开文章实际用到的分类（文章数降序），
+          点击筛选、再次点击当前分类取消；分类全空时整栏不显示 */}
+      {categories.length > 0 ? (
+        <Reveal delay={120} className="mt-5">
+          <nav
+            aria-label={t.common.categories}
+            className="flex flex-wrap items-center gap-2"
+          >
+            {categories.map((c) => {
+              const active = c.name === activeCategory;
+              return (
+                <Link
+                  key={c.name}
+                  href={
+                    active
+                      ? "/posts"
+                      : `/posts?category=${encodeURIComponent(c.name)}`
+                  }
+                  aria-current={active ? "page" : undefined}
+                  className={
+                    "inline-flex items-center rounded-full border px-3.5 py-1 text-xs transition-colors max-sm:text-sm " +
+                    (active
+                      ? "border-transparent bg-[rgb(var(--ba-primary))] text-white shadow-[0_3px_10px_rgba(18,137,249,0.35)]"
+                      : "border-[color:rgb(var(--ba-line))] bg-[color:rgb(var(--color-surface))] text-[color:rgb(var(--color-text-primary))] hover:border-[rgb(var(--ba-primary))]/45 hover:text-[color:rgb(var(--ba-primary))]")
+                  }
+                >
+                  {c.name}
+                  <span className="ml-1.5 opacity-70">{c.count}</span>
+                </Link>
+              );
+            })}
+          </nav>
+        </Reveal>
+      ) : null}
+
       {visiblePosts.length === 0 ? (
         <Reveal className="mt-12">
           <p className="ba-card px-8 py-14 text-center text-sm text-slate-500 dark:text-slate-400">
@@ -114,7 +195,7 @@ export default async function PostsPage({
               <nav className="mt-10 flex items-center justify-center gap-5">
                 {safePage > 1 ? (
                   <Link
-                    href={`/posts?page=${safePage - 1}`}
+                    href={pageHref(safePage - 1)}
                     className="ba-btn transition-all duration-200 hover:-translate-y-0.5"
                   >
                     {t.common.prev}
@@ -135,7 +216,7 @@ export default async function PostsPage({
 
                 {safePage < totalPages ? (
                   <Link
-                    href={`/posts?page=${safePage + 1}`}
+                    href={pageHref(safePage + 1)}
                     className="ba-btn transition-all duration-200 hover:-translate-y-0.5"
                   >
                     {t.common.next}
