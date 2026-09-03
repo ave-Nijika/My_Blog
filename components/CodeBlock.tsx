@@ -18,6 +18,7 @@
  * clipboard API 失败降级 textarea + execCommand；尊重 prefers-reduced-motion。
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   useDeviceOverride,
   getLastSwitchedToMobileAt,
@@ -128,6 +129,10 @@ export function CodeBlock({ children, className }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [toast, setToast] = useState(false);
   const [mobileHint, setMobileHint] = useState(false);
+  // Portal 挂载标记：toast 用 createPortal 渲染到 body，脱离被 Reveal 的
+  // transform 劫持的祖先链（否则 position:fixed 相对文章容器而非视口）
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const copyTimerRef = useRef<number | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   const pressTimerRef = useRef<number | null>(null);
@@ -287,24 +292,32 @@ export function CodeBlock({ children, className }: Props) {
       <pre ref={preRef} className={className}>
         {children}
       </pre>
-      {toast ? (
-        <div className="code-copy-toast" role="status">
-          已复制
-        </div>
-      ) : null}
-      {mobileHint ? (
-        <div
-          className="code-copy-toast"
-          role="status"
-          title="点击关闭"
-          onClick={() => {
-            setMobileHint(false);
-            if (hintTimerRef.current) window.clearTimeout(hintTimerRef.current);
-          }}
-        >
-          {MOBILE_HINT_TEXT}
-        </div>
-      ) : null}
+      {mounted
+        ? createPortal(
+            <>
+              {toast ? (
+                <div className="code-copy-toast" role="status">
+                  已复制
+                </div>
+              ) : null}
+              {mobileHint ? (
+                <div
+                  className="code-copy-toast"
+                  role="status"
+                  title="点击关闭"
+                  onClick={() => {
+                    setMobileHint(false);
+                    if (hintTimerRef.current)
+                      window.clearTimeout(hintTimerRef.current);
+                  }}
+                >
+                  {MOBILE_HINT_TEXT}
+                </div>
+              ) : null}
+            </>,
+            document.body
+          )
+        : null}
     </div>
   );
 }
