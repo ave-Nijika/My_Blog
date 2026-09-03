@@ -413,6 +413,14 @@ select:focus-visible {
   color: rgb(var(--ba-primary));
 }
 
+/* 长文本 pill 允许换行（英文 about 页角色文案较长，nowrap 会溢出被裁剪） */
+.ba-pill--wrap {
+  white-space: normal;
+  height: auto;
+  line-height: 1.5;
+  text-align: center;
+}
+
 /* 白底蓝描边 pill 按钮（官网"前往四格漫画"，右端圆点） */
 .ba-btn {
   display: inline-flex;
@@ -989,6 +997,13 @@ a.ba-button-primary {
 }
 
 a.ba-button-primary:hover {
+  color: rgb(255 255 255);
+}
+
+/* 分类 chip 选中态：全局 a:hover（特异性 0,1,1）会盖过单类 text-white（0,1,0），
+   把白字染成蓝字（蓝底蓝字不可见）。用 a.类名 组合提高到 0,1,1 并覆盖 hover。 */
+a.ba-category-chip-active,
+a.ba-category-chip-active:hover {
   color: rgb(255 255 255);
 }
 

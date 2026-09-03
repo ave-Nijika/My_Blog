@@ -150,7 +150,7 @@ export default async function PostsPage({
                   className={
                     "inline-flex items-center rounded-full border px-3.5 py-1 text-xs transition-colors max-sm:text-sm " +
                     (active
-                      ? "border-transparent bg-[rgb(var(--ba-primary))] text-white shadow-[0_3px_10px_rgba(18,137,249,0.35)]"
+                      ? "ba-category-chip-active border-transparent bg-[rgb(var(--ba-primary))] text-white shadow-[0_3px_10px_rgba(18,137,249,0.35)]"
                       : "border-[color:rgb(var(--ba-line))] bg-[color:rgb(var(--color-surface))] text-[color:rgb(var(--color-text-primary))] hover:border-[rgb(var(--ba-primary))]/45 hover:text-[color:rgb(var(--ba-primary))]")
                   }
                 >

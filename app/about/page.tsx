@@ -75,7 +75,7 @@ export default async function AboutPage() {
           {profile.nickname}
         </h2>
         <div className="mb-4">
-          <span className="ba-pill">{t.page.aboutRole}</span>
+          <span className="ba-pill ba-pill--wrap">{t.page.aboutRole}</span>
         </div>
         {profile.biography && (
           <p className="leading-relaxed text-slate-600 dark:text-slate-300 max-sm:text-sm">
