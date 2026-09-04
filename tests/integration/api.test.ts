@@ -677,10 +677,10 @@ describe("分类标签管理 taxonomy", () => {
     };
     const catNames = body.categories.map((c) => c.name);
     const tagNames = body.tags.map((t) => t.name);
-    for (const name of ["技术", "生活", "随笔", "未分类"]) {
+    for (const name of ["技术", "部署运维", "AI", "随笔"]) {
       expect(catNames).toContain(name);
     }
-    for (const name of ["学习", "算法", "前端", "后端"]) {
+    for (const name of ["计算机基础", "算法", "Linux系统", "Windows系统", "环境", "AI智能体", "git", "docker"]) {
       expect(tagNames).toContain(name);
     }
   });

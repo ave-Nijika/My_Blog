@@ -96,9 +96,12 @@ export function PostEditor({ initial, mode }: Props) {
     };
   }, []);
 
-  // 分类快捷项：输入时按已填内容过滤（可搜索），空则展示全部
+  // 分类快捷项：仅在用户"主动修改"分类输入时按已填内容过滤（可搜索）。
+  // 编辑页初始就预填了文章旧分类，若按非空过滤会把其余预置项全部藏掉
+  //（表现为"只能看到当前分类"），故只有值相对 initial 变化时才进入过滤分支。
   const categoryInput = values.category.trim();
-  const categoryPresets = categoryInput
+  const categoryDirty = categoryInput !== (initial.category ?? "").trim();
+  const categoryPresets = categoryDirty
     ? taxonomy.categories.filter((c) => c.name.includes(categoryInput))
     : taxonomy.categories;
   // 标签快捷项：已加入的置灰不可重复点击

@@ -27,15 +27,16 @@ export function slugifyName(value: string): string {
   return slug || "unnamed";
 }
 
-export const PRESET_CATEGORIES = ["技术", "生活", "随笔", "未分类"] as const;
+export const PRESET_CATEGORIES = ["技术", "部署运维", "AI", "随笔"] as const;
 export const PRESET_TAGS = [
-  "学习",
-  "算法",
   "计算机基础",
-  "前端",
-  "后端",
-  "随笔",
-  "草稿",
+  "算法",
+  "Linux系统",
+  "Windows系统",
+  "环境",
+  "AI智能体",
+  "git",
+  "docker",
 ] as const;
 
 export async function seedTaxonomy(): Promise<{
