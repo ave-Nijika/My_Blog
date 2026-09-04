@@ -96,14 +96,11 @@ export function PostEditor({ initial, mode }: Props) {
     };
   }, []);
 
-  // 分类快捷项：仅在用户"主动修改"分类输入时按已填内容过滤（可搜索）。
-  // 编辑页初始就预填了文章旧分类，若按非空过滤会把其余预置项全部藏掉
-  //（表现为"只能看到当前分类"），故只有值相对 initial 变化时才进入过滤分支。
+  // 分类快捷项：始终全量展示。此前的"按输入过滤"在两个场景下都会把其余
+  // 预置项藏掉：① 编辑页初始预填了文章旧分类；② 点击任一 chip 本身就会
+  // 改 values.category。预置总数少，搜索过滤没有价值，故彻底移除。
   const categoryInput = values.category.trim();
-  const categoryDirty = categoryInput !== (initial.category ?? "").trim();
-  const categoryPresets = categoryDirty
-    ? taxonomy.categories.filter((c) => c.name.includes(categoryInput))
-    : taxonomy.categories;
+  const categoryPresets = taxonomy.categories;
   // 标签快捷项：已加入的置灰不可重复点击
   const currentTags = values.tagsInput
     .split(/[,，]/)
@@ -278,7 +275,7 @@ export function PostEditor({ initial, mode }: Props) {
       </Field>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Field label="分类" hint="点击预置项快速填入（输入时可搜索过滤），也可自由输入">
+        <Field label="分类" hint="点击预置项快速填入，也可自由输入">
           <input
             type="text"
             value={values.category}
