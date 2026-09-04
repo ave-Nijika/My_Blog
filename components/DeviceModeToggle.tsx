@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * 设备模式切换（需求 A）：右下角悬浮小圆点（CSDN"回顶部"式存在感）+
- * 向上展开的三档 popover（自动 / 桌面端 / 手机端）。
+ * 设备模式切换：右下角悬浮小圆点（CSDN"回顶部"式存在感）+
+ * 向上展开的两档 popover（桌面端 / 手机端）。
  *
- * - 持久化经 lib/useDeviceOverride（localStorage.ba_device_override）
+ * - 持久化经 lib/useDeviceOverride（localStorage.ba_device_override，
+ *   历史遗留 "auto" 由 hook 归一化为桌面端）
  * - 点击选项即切换并收起；点击页面其他区域 / Esc 关闭
  * - a11y：按钮 aria-label="切换设备模式" + aria-expanded；
  *   popover role="menu"，选项 role="menuitemradio" + aria-checked
@@ -18,7 +19,6 @@ import {
 } from "@/lib/useDeviceOverride";
 
 const OPTIONS: Array<{ value: DeviceOverride; label: string }> = [
-  { value: "auto", label: "自动" },
   { value: "desktop", label: "桌面端" },
   { value: "mobile", label: "手机端" },
 ];

@@ -3,14 +3,13 @@
 /**
  * 文章代码块增强（仅文章详情页启用；编辑页 PostEditor 预览不受影响）。
  *
- * 三档行为（需求 B，经 lib/useDeviceOverride 的 resolved/override 决定）：
- * - resolved = desktop（auto+系统有鼠标，或手动桌面端）：工具条 hover/
- *   focus-within 浮出，渲染「复制 + 展开」两按钮（沿用上一轮实现）；
- *   手动桌面端在无 hover 能力的设备上按钮常驻可见（验收 2，触屏没有 hover）。
- * - override = mobile（手动手机端）：工具条**常驻**且只渲染「展开」按钮
+ * 两档行为（经 lib/useDeviceOverride 的 override 决定；历史 "auto" 已在
+ * hook 内归一化为 desktop）：
+ * - override = desktop（默认）：工具条 hover/focus-within 浮出，渲染
+ *   「复制 + 展开」两按钮；无 hover 能力的设备（触屏）上按钮常驻可见。
+ * - override = mobile：工具条**常驻**且只渲染「展开」按钮
  *   （复制按钮隐藏，避免与长按重复）；长按代码块 500ms 复制 + toast 沿用。
- * - override = auto 且系统无鼠标：工具条隐藏 + 长按复制（与既有线上行为一致）。
- * - 切到 manual mobile 的瞬间：屏幕中下浮出 3 秒说明栏（复用 .code-copy-toast，
+ * - 切到 mobile 的瞬间：屏幕中下浮出 3 秒说明栏（复用 .code-copy-toast，
  *   点击可立即关闭；模块级标记保证一个 mobile 周期只弹一次，仅在文章详情页
  *   存在本组件，天然不波及其他页面）。
  *
@@ -231,23 +230,14 @@ export function CodeBlock({ children, className }: Props) {
     }
   }, []);
 
-  // ===== 三档行为派生 =====
-  // 工具条：manual mobile 常驻；manual desktop 常驻（无 hover 设备）或 hover；
-  // auto 沿用系统判定（有鼠标 hover、无鼠标隐藏——与既有线上行为一致）
-  const toolbarMode =
-    override === "mobile"
-      ? "persistent"
-      : override === "desktop"
-        ? canHover
-          ? "hover"
-          : "persistent"
-        : resolved === "desktop"
-          ? "hover"
-          : "hidden";
-  const showToolbar = toolbarMode !== "hidden";
+  // ===== 两档行为派生 =====
+  // mobile：工具条常驻、仅展开按钮；desktop：有 hover 时悬停浮出，
+  // 无 hover 设备（触屏）常驻可见（否则按钮永远无法触达）。
+  // 两档均渲染工具条，差异仅在常驻显示或悬停显示。
+  const toolbarMode = override === "mobile" ? "persistent" : canHover ? "hover" : "persistent";
   // 复制按钮只在桌面档渲染（手机端隐藏，避免与长按重复）
   const showCopyButton = resolved === "desktop";
-  // 长按复制在"复制按钮不可见"的档位启用（auto+触屏 / manual mobile）
+  // 长按复制在"复制按钮不可见"的档位启用（mobile）
   const longPressEnabled = resolved !== "desktop";
   // 常驻样式以内联覆盖既有 CSS（默认 opacity:0/pointer-events:none，
   // 以及 pointer:coarse 下的 display:none），不改动 .prose-content pre 既有视觉
@@ -264,31 +254,29 @@ export function CodeBlock({ children, className }: Props) {
       onTouchEnd={longPressEnabled ? cancelPress : undefined}
       onTouchCancel={longPressEnabled ? cancelPress : undefined}
     >
-      {showToolbar ? (
-        <div className="code-block-toolbar" style={persistentStyle}>
-          {showCopyButton ? (
-            <button
-              type="button"
-              className={`code-block-btn${copied ? " is-copied" : ""}`}
-              aria-label="复制代码"
-              title="复制代码"
-              onClick={handleCopyClick}
-            >
-              {copied ? <CheckIcon /> : <CopyIcon />}
-            </button>
-          ) : null}
+      <div className="code-block-toolbar" style={persistentStyle}>
+        {showCopyButton ? (
           <button
             type="button"
-            className="code-block-btn"
-            aria-label={expanded ? "收起代码" : "展开代码"}
-            title={expanded ? "收起代码" : "展开代码"}
-            aria-pressed={expanded}
-            onClick={() => setExpanded((v) => !v)}
+            className={`code-block-btn${copied ? " is-copied" : ""}`}
+            aria-label="复制代码"
+            title="复制代码"
+            onClick={handleCopyClick}
           >
-            {expanded ? <CollapseIcon /> : <ExpandIcon />}
+            {copied ? <CheckIcon /> : <CopyIcon />}
           </button>
-        </div>
-      ) : null}
+        ) : null}
+        <button
+          type="button"
+          className="code-block-btn"
+          aria-label={expanded ? "收起代码" : "展开代码"}
+          title={expanded ? "收起代码" : "展开代码"}
+          aria-pressed={expanded}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? <CollapseIcon /> : <ExpandIcon />}
+        </button>
+      </div>
       <pre ref={preRef} className={className}>
         {children}
       </pre>
