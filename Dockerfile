@@ -19,7 +19,7 @@ ENV NODE_ENV=production
 COPY package.json ./
 # 生产依赖安装（standalone 不含 node_modules，需在镜像内安装）
 RUN npm config set registry https://registry.npmmirror.com \
-    && npm install --omit=dev --no-audit --no-fund
+    && npm install --omit=dev --no-audit --no-fund --legacy-peer-deps
 
 # Prisma Client 必须在容器内生成（基于 PG schema），否则运行时
 # "@prisma/client did not initialize yet"
