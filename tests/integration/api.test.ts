@@ -237,6 +237,14 @@ describe("公开内容安全边界", () => {
     const body = (await res.json()) as { error?: string };
     expect(body.error).toBeTruthy();
   });
+
+  it("搜索页渲染正文匹配片段框（fixture 正文关键词，应用层打分链路）", async () => {
+    // 「二分」同时命中 algorithm-notes 的标题与正文 → 该文必有片段框
+    const res = await req("/search?q=" + encodeURIComponent("二分"));
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('data-testid="search-snippet"');
+  });
 });
 
 describe("管理员后台全链路", () => {

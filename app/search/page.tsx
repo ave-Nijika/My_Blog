@@ -2,12 +2,13 @@ import { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
-import { searchArticles, countSearchResults } from "@/lib/queries";
+import { searchArticles } from "@/lib/queries";
+import { splitQuery } from "@/lib/search";
 import { DEFAULT_LOCALE } from "@/lib/i18n/config";
 import { zh } from "@/lib/i18n/zh";
 import { en } from "@/lib/i18n/en";
 import { Reveal } from "@/components/Reveal";
-import { PostRow } from "@/components/PostRow";
+import { SearchResultRow } from "@/components/SearchResultRow";
 
 export async function generateMetadata({
   searchParams,
@@ -50,14 +51,13 @@ export default async function SearchPage({
   }
 
   // 无 q 参数时不查库：仅渲染常驻搜索框与引导文案（修复需求 4.3）
-  const [result, totalCount] = query
-    ? await Promise.all([
-        searchArticles(query, page, perPage),
-        countSearchResults(query),
-      ])
-    : [{ articles: [] as Awaited<ReturnType<typeof searchArticles>>["articles"] }, 0];
+  const result = query
+    ? await searchArticles(query, page, perPage)
+    : { articles: [], totalCount: 0, snippets: {} as Record<string, string> };
+  const totalCount = result.totalCount;
 
   const totalPages = Math.ceil(totalCount / perPage);
+  const searchTokens = splitQuery(query);
 
   return (
     <div className="relative mx-auto max-w-3xl px-4 py-14 sm:px-6">
@@ -131,7 +131,13 @@ export default async function SearchPage({
                 translateY={12}
                 className="list-none"
               >
-                <PostRow post={post} pinnedLabel={t.news.pinned} showSummary showTags />
+                <SearchResultRow
+                  post={post}
+                  snippet={result.snippets[post.id]}
+                  tokens={searchTokens}
+                  pinnedLabel={t.news.pinned}
+                  snippetLabel={t.page.searchSnippetLabel}
+                />
               </Reveal>
             ))}
           </ul>

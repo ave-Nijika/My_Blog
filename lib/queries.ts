@@ -1,5 +1,11 @@
 import { db } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
+import {
+  extractSnippet,
+  scoreArticle,
+  splitQuery,
+  type SearchableArticle,
+} from "@/lib/search";
 
 export type ArticleWithTags = Prisma.ArticleGetPayload<{
   include: {
@@ -229,37 +235,23 @@ export async function countArticlesByCategorySlug(
   });
 }
 
-export async function searchArticles(
-  query: string,
-  page?: number,
-  perPage?: number
-) {
-  const where: Prisma.ArticleWhereInput = {
-    status: "public",
-    OR: [
-      { title: { contains: query } },
-      { summary: { contains: query } },
-      { plainTextCache: { contains: query } },
-      {
-        tags: {
-          some: {
-            tag: {
-              name: { contains: query },
-            },
-          },
-        },
-      },
-      {
-        category: {
-          contains: query,
-        },
-      },
-    ],
-  };
-  
+export interface SearchRunResult {
+  /** 命中文章，相关度降序（同分按发布时间降序） */
+  matched: ArticleWithTags[];
+  /** 文章 id → 正文匹配片段（仅正文命中的文章有） */
+  snippets: Record<string, string>;
+}
+
+/**
+ * 搜索核心：取全量公开文章后，在应用层完成大小写不敏感匹配、打分、排序
+ * 与片段提取（lib/search.ts 纯函数）。SQLite 与 PG 行为完全一致，零迁移零依赖。
+ */
+async function runSearch(query: string): Promise<SearchRunResult> {
+  const tokens = splitQuery(query);
+  if (tokens.length === 0) return { matched: [], snippets: {} };
+
   const articles = await db.article.findMany({
-    where,
-    orderBy: [{ publishedAt: "desc" }],
+    where: { status: "public" },
     include: {
       tags: {
         include: {
@@ -267,44 +259,61 @@ export async function searchArticles(
         },
       },
     },
-    ...(page && perPage
-      ? {
-          skip: Math.max((page - 1) * perPage, 0),
-          take: perPage,
-        }
-      : {}),
+    orderBy: { publishedAt: "desc" },
   });
-  
-  const totalCount = await db.article.count({ where });
-  
-  return { articles, totalCount };
+
+  const scored = articles
+    .map((article) => {
+      const searchable: SearchableArticle = {
+        title: article.title,
+        summary: article.summary,
+        category: article.category,
+        plainTextCache: article.plainTextCache,
+        tagNames: article.tags.map((t) => t.tag.name),
+      };
+      const hit = scoreArticle(searchable, tokens);
+      return hit ? { article, score: hit.score } : null;
+    })
+    .filter((x): x is { article: ArticleWithTags; score: number } => x !== null);
+
+  // 相关度降序，同分按发布时间降序
+  scored.sort(
+    (a, b) =>
+      b.score - a.score ||
+      (b.article.publishedAt?.getTime() ?? 0) -
+        (a.article.publishedAt?.getTime() ?? 0)
+  );
+
+  const snippets: Record<string, string> = {};
+  for (const { article } of scored) {
+    const snippet = extractSnippet(article.plainTextCache, tokens);
+    if (snippet) snippets[article.id] = snippet;
+  }
+
+  return { matched: scored.map((s) => s.article), snippets };
+}
+
+export async function searchArticles(
+  query: string,
+  page?: number,
+  perPage?: number
+) {
+  const { matched, snippets } = await runSearch(query);
+  const totalCount = matched.length;
+  if (!page || !perPage) {
+    return { articles: matched, totalCount, snippets };
+  }
+  const start = Math.max((page - 1) * perPage, 0);
+  return {
+    articles: matched.slice(start, start + perPage),
+    totalCount,
+    snippets,
+  };
 }
 
 export async function countSearchResults(query: string): Promise<number> {
-  const where: Prisma.ArticleWhereInput = {
-    status: "public",
-    OR: [
-      { title: { contains: query } },
-      { summary: { contains: query } },
-      { plainTextCache: { contains: query } },
-      {
-        tags: {
-          some: {
-            tag: {
-              name: { contains: query },
-            },
-          },
-        },
-      },
-      {
-        category: {
-          contains: query,
-        },
-      },
-    ],
-  };
-  
-  return db.article.count({ where });
+  const { matched } = await runSearch(query);
+  return matched.length;
 }
 
 export async function getArticleWithStats(slug: string) {
