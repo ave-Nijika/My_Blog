@@ -107,6 +107,8 @@ async function startServer(): Promise<void> {
       COMMENT_RATE_LIMIT_WINDOW_SECONDS: "2",
       COMMENT_RATE_LIMIT_MAX_ATTEMPTS: "3",
       CAPTCHA_ENABLED: "false",
+      SEARCH_RATE_LIMIT_WINDOW_SECONDS: "2",
+      SEARCH_RATE_LIMIT_MAX_ATTEMPTS: "5",
       COMMENT_LLM_ENABLED: "false",
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -244,6 +246,32 @@ describe("公开内容安全边界", () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain('data-testid="search-snippet"');
+  });
+});
+
+describe("搜索接口限流（IP 维度）", () => {
+  it("API 第 6 次搜索 429，窗口过期后恢复", async () => {
+    await sleep(2300); // 确保干净窗口
+    const statuses: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      const r = await req("/api/search?q=hello-world");
+      statuses.push(r.status);
+    }
+    expect(statuses).toEqual([200, 200, 200, 200, 200, 429]);
+    await sleep(2300);
+    const after = await req("/api/search?q=hello-world");
+    expect(after.status).toBe(200);
+  });
+
+  it("SSR 搜索页限流时渲染提示、不渲染结果", async () => {
+    await sleep(2300);
+    for (let i = 0; i < 5; i++) {
+      await req("/api/search?q=二分"); // 占满额度
+    }
+    const res = await req("/search?q=二分");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('data-testid="search-rate-limited"');
   });
 });
 
@@ -421,13 +449,16 @@ describe("评论管线", () => {
     expect((pending[0] as { status: string }).status).toBe("pending");
   });
 
-  it("同一访客 10 分钟冷却：第二个请求 429", async () => {
+  it("同一访客冷却期内再提交：统一 200 + 通用错误文案", async () => {
     const res = await req("/api/posts/hello-world/comments", {
       method: "POST",
       headers: withVisitorCookie(tokenA),
       body: JSON.stringify({ bodyText: "冷却期内再次提交，应该被拒绝。" }),
     });
-    expect(res.status).toBe(429);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok?: boolean; error?: string };
+    expect(body.ok).toBeFalsy();
+    expect(body.error).toBe("评论提交失败，请稍后再试");
   });
 
   it("正则 reject：统一提示、不落库、警告 +2（低优先级 reject 也生效）", async () => {
@@ -513,10 +544,15 @@ describe("评论管线", () => {
       )
     );
     const statuses = results.map((r) => r.status).sort();
-    expect(statuses).toEqual([200, 200, 200, 429]);
+    expect(statuses).toEqual([200, 200, 200, 200]);
+    // 限流信号从状态码挪到 body：并发的第 4 个被限流，其余 3 个成功
+    const bodies = (await Promise.all(results.map((r) => r.json()))) as { ok?: boolean }[];
+    const okCount = bodies.filter((b) => b.ok === true).length;
+    expect(okCount).toBe(3);
+    expect(bodies.filter((b) => b.ok !== true)).toHaveLength(1);
   });
 
-  it("自动封禁：警告累计达 DB 阈值触发 IP 封禁，后续评论 403", async () => {
+  it("自动封禁：警告累计达 DB 阈值触发 IP 封禁，后续评论统一 200 错误响应", async () => {
     // 通过后台 API 保存阈值（PUT 会立即失效服务端设置缓存，规避 5s TTL 竞态）
     const put = await req("/api/admin/site-settings", {
       method: "PUT",
@@ -539,9 +575,12 @@ describe("评论管线", () => {
     const blocked = await req("/api/posts/hello-world/comments", {
       method: "POST",
       headers: withVisitorCookie(makeVisitorToken()),
-      body: JSON.stringify({ bodyText: "已被封禁的访客再提交，应当 403。" }),
+      body: JSON.stringify({ bodyText: "已被封禁的访客再提交，应当统一 200 错误响应。" }),
     });
-    expect(blocked.status).toBe(403);
+    expect(blocked.status).toBe(200);
+    const blockedBody = (await blocked.json()) as { ok?: boolean; error?: string };
+    expect(blockedBody.ok).toBeFalsy();
+    expect(blockedBody.error).toBeTruthy();
   });
 });
 
@@ -1019,6 +1058,48 @@ describe("文章物理删除与存档（方案 C）", () => {
       body: "{}",
     });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("改密后吊销会话（会破坏登录态，放最后段执行并恢复）", () => {
+  it("改密后旧会话立即 401，新密码可登录，旧密码不可用", async () => {
+    // 前置：此时 jar 已登录（前面 describe 已建好登录态 + csrfToken）
+    const change = await req("/api/admin/password", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+      body: JSON.stringify({ currentPassword: "test-admin-pass-123", newPassword: "test-admin-pass-456" }),
+    });
+    expect(change.status).toBe(200);
+    // 旧会话立即失效
+    const probe = await req("/api/admin/posts");
+    expect(probe.status).toBe(401);
+    // 旧密码不能登录
+    const oldLogin = await req("/api/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "testadmin", password: "test-admin-pass-123" }),
+    });
+    expect(oldLogin.status).toBe(401);
+    // 新密码可登录（恢复会话）
+    const newLogin = await req("/api/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "testadmin", password: "test-admin-pass-456" }),
+    });
+    expect(newLogin.status).toBe(200);
+    // 改回原密码，保持测试基线（再次吊销 + 重新登录）
+    const restore = await req("/api/admin/password", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+      body: JSON.stringify({ currentPassword: "test-admin-pass-456", newPassword: "test-admin-pass-123" }),
+    });
+    expect(restore.status).toBe(200);
+    const relogin = await req("/api/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(admin),
+    });
+    expect(relogin.status).toBe(200);
   });
 });
 

@@ -7,7 +7,7 @@
  *  - CSRF：双提交 cookie 校验（与其它写接口一致）；
  *  - 验证当前密码：bcrypt.compare（与登录路由同款比较逻辑）；
  *  - 新密码用 bcrypt 哈希（cost 与登录路由相同，10）后写 adminUser.passwordHash；
- *  - 不改动 AdminSession：当前会话与密码哈希解耦，改密后本会话保持登录；
+ *  - 改密后吊销全部会话（含当前会话），强制重新登录（安全审查 P0.1 修复）；
  *  - 审计：AUDIT_ACTIONS.PASSWORD_CHANGE，metadata 只记 adminId/时间，绝不记录任何密码内容。
  *  - 无新表/新字段/新依赖（复用 adminUser.passwordHash 列与 bcryptjs）。
  */
@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import { requireAdminApi, getSession } from "@/lib/auth";
+import { requireAdminApi, getSession, revokeAllAdminSessions } from "@/lib/auth";
 import { verifyCsrfToken } from "@/lib/csrf";
 import { AUDIT_ACTIONS, logAudit } from "@/lib/audit";
 
@@ -90,12 +90,15 @@ export async function PATCH(req: NextRequest) {
     data: { passwordHash },
   });
 
+  // 安全审查 P0.1：改密后旧会话必须立即失效（含当前会话，前端会引导重新登录）
+  const sessionsRevoked = await revokeAllAdminSessions();
+
   await logAudit({
     adminId: admin.id,
     action: AUDIT_ACTIONS.PASSWORD_CHANGE,
     targetType: "admin_user",
     targetId: admin.id,
-    metadata: { username: admin.username, at: new Date().toISOString() },
+    metadata: { username: admin.username, sessionsRevoked, at: new Date().toISOString() },
   });
 
   return NextResponse.json({ ok: true });

@@ -8,14 +8,14 @@
  *  - 新用户名 zod：3-30 位、小写字母/数字/中划线（与 slug 风格一致，便于输入），
  *    查重 AdminUser.username（@unique）；
  *  - 直接 update username 列（复用现有列，无迁移）；
- *  - 会话零改动（token 与 username 解耦，改名后当前登录保持）；
+ *  - 改名后吊销全部会话（含当前会话），强制重新登录（安全审查 P0.1 同款修复）；
  *  - 审计 auth.password.change 同款机制，targetType=admin_user。
  */
 import { NextRequest, NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import { requireAdminApi, getSession } from "@/lib/auth";
+import { requireAdminApi, getSession, revokeAllAdminSessions } from "@/lib/auth";
 import { verifyCsrfToken } from "@/lib/csrf";
 import { AUDIT_ACTIONS, logAudit } from "@/lib/audit";
 
@@ -96,6 +96,9 @@ export async function PATCH(req: NextRequest) {
     data: { username: data.newUsername },
   });
 
+  // 安全审查 P0.1 同款修复：改名后旧会话立即失效（含当前会话）
+  const sessionsRevoked = await revokeAllAdminSessions();
+
   await logAudit({
     adminId: admin.id,
     action: AUDIT_ACTIONS.PASSWORD_CHANGE,
@@ -103,6 +106,7 @@ export async function PATCH(req: NextRequest) {
     targetId: admin.id,
     metadata: {
       action: "username_change",
+      sessionsRevoked,
       from: admin.username,
       to: data.newUsername,
       at: new Date().toISOString(),

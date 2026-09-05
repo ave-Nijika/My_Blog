@@ -3,7 +3,8 @@
 /**
  * /admin/account — 管理员自助账号设置：修改密码 + 修改登录用户名。
  * 两个表单都以「当前密码」自证身份（/api/admin/password 与 /api/admin/username）。
- * 成功后当前会话保持（会话与用户列解耦）。
+ * 成功后服务端会吊销全部会话（安全审查 P0.1 修复），前端提示后跳 /admin，
+ * 由 requireAdmin() 重定向到登录页。
  */
 import { useState, useTransition } from "react";
 import { fetchWithCsrf } from "@/lib/fetchWithCsrf";
@@ -47,10 +48,10 @@ export function PasswordChangeForm() {
           setError(data.error || "修改失败");
           return;
         }
-        setMessage("密码已修改，立即生效（当前登录保持）。");
-        setCurrentPassword("");
-        setNewPassword("");
-        setConfirmPassword("");
+        setMessage("密码已修改，出于安全考虑所有设备已退出登录，请重新登录…");
+        setTimeout(() => {
+          window.location.href = "/admin";
+        }, 1500);
       } catch {
         setError("网络异常，请重试");
       }
@@ -160,9 +161,10 @@ export function UsernameChangeForm({ currentUsername }: { currentUsername: strin
           setError(data.error || "修改失败");
           return;
         }
-        setMessage(`用户名已改为 ${data.username}，下次登录请使用新用户名（当前登录保持）。`);
-        setCurrentPassword("");
-        setNewUsername("");
+        setMessage(`用户名已改为 ${data.username}，出于安全考虑所有设备已退出登录，请重新登录…`);
+        setTimeout(() => {
+          window.location.href = "/admin";
+        }, 1500);
       } catch {
         setError("网络异常，请重试");
       }
@@ -179,7 +181,7 @@ export function UsernameChangeForm({ currentUsername }: { currentUsername: strin
       </div>
       <p className="text-sm text-slate-500 dark:text-slate-400 max-sm:text-sm">
         当前用户名：<code className="rounded bg-slate-100 px-1.5 py-0.5 dark:bg-slate-800">{currentUsername}</code>
-        。修改后下次登录使用新用户名，当前会话不受影响。
+        。修改后出于安全考虑会退出全部登录，需用新用户名重新登录。
       </p>
 
       <label className="flex flex-col gap-1 text-sm">

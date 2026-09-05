@@ -92,3 +92,27 @@ export function sessionExpiry(): Date {
 export function hashSessionToken(token: string): string {
   return hashToken(token);
 }
+
+/**
+ * 吊销全部管理员会话并清掉当前 SESSION cookie。
+ * AdminSession 无 adminId 外键（单管理员设计），无法定位"某人的会话"，只能全量吊销。
+ * 改密/改名后调用：所有旧会话（含当前会话）立即失效，返回吊销条数。
+ * （安全审查 P0.1 修复：旧会话在改密后必须立即失效。）
+ */
+export async function revokeAllAdminSessions(): Promise<number> {
+  const { count } = await db.adminSession.updateMany({
+    where: { revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  const store = await cookies();
+  store.set({
+    name: SESSION_COOKIE_NAME,
+    value: "",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 0,
+  });
+  return count;
+}
