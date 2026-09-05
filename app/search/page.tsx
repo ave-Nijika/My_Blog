@@ -1,9 +1,11 @@
 import { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { searchArticles } from "@/lib/queries";
 import { splitQuery } from "@/lib/search";
+import { getClientIp } from "@/lib/client-ip";
+import { tryConsumeSearch } from "@/lib/rate-limit";
 import { DEFAULT_LOCALE } from "@/lib/i18n/config";
 import { zh } from "@/lib/i18n/zh";
 import { en } from "@/lib/i18n/en";
@@ -46,12 +48,17 @@ export default async function SearchPage({
   const page = Number(searchParamsPromise.page) || 1;
   const perPage = 10;
 
+  // 仅当有 q 时才消耗搜索额度；无 q 页面不查库，不计入限流（安全审查 P1.10）
+  const rateLimited =
+    query.length > 0 &&
+    !tryConsumeSearch(getClientIp({ headers: await headers() })).allowed;
+
   if (query.length > 100) {
     notFound();
   }
 
   // 无 q 参数时不查库：仅渲染常驻搜索框与引导文案（修复需求 4.3）
-  const result = query
+  const result = query && !rateLimited
     ? await searchArticles(query, page, perPage)
     : { articles: [], totalCount: 0, snippets: {} as Record<string, string> };
   const totalCount = result.totalCount;
@@ -103,7 +110,20 @@ export default async function SearchPage({
         </span>
       </Reveal>
 
-      {query && result.articles.length === 0 && (
+      {/* 搜索限流提示（安全审查 P1.10）：SSR 直接渲染，替代误导性的空结果 */}
+      {rateLimited && (
+        <Reveal className="mt-6">
+          <div
+            data-testid="search-rate-limited"
+            className="ba-card flex items-center gap-3 p-6 text-sm text-slate-600 dark:text-slate-400"
+          >
+            <span className="ba-tri h-4 w-5" aria-hidden />
+            <span>{t.page.searchRateLimited}</span>
+          </div>
+        </Reveal>
+      )}
+
+      {query && !rateLimited && result.articles.length === 0 && (
         <Reveal className="mt-10">
           <div className="ba-card flex flex-col items-center gap-4 p-12 text-center">
             <span className="ba-tri h-9 w-11 rotate-180 opacity-70" aria-hidden />

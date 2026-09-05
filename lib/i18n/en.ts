@@ -395,6 +395,7 @@ export const en = {
     searchNoResultHint: "Try shorter keywords or different wording",
     searchAgain: "Search again",
     searchSnippetLabel: "Match",
+    searchRateLimited: "Too many searches, please try again in a moment.",
     aboutTitle: "About Me",
     aboutBadge: "Personal learning blog",
     aboutRole: "Personal learning blog · Non-profit fan site",

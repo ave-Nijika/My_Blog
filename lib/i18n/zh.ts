@@ -394,6 +394,7 @@ export const zh = {
     searchNoResultHint: "试试拆成更短的关键词，或换个说法",
     searchAgain: "重新搜索",
     searchSnippetLabel: "匹配片段",
+    searchRateLimited: "搜索太频繁了，请稍后再试",
     aboutTitle: "关于我",
     aboutBadge: "个人学习博客",
     aboutRole: "个人学习博客 · 非盈利粉丝站向",
