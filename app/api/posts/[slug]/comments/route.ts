@@ -8,7 +8,8 @@
  *   验证码 → 封禁检查 → 冷却 → 限流 → 长度校验 → 文本清洗 →
  *   正则规则 → LLM 审核 → 保存。
  *
- *   - 验证码失败 / 封禁命中 → 通用错误
+ *   - 各类失败（验证码/封禁/冷却/限流/校验/入库）对外统一 HTTP 200 +
+ *     通用错误文案，状态码不携带语义（安全审查 P1.2）；真实原因只进服务端日志
  *   - 正则 reject  → 拒绝 + 警告（即使 LLM 之后会 approve 也无法绕过）
  *   - 正则 review  → 标为 pending，跳过 LLM
  *   - 正则 replace → 替换后继续；走 LLM
@@ -19,7 +20,6 @@
  */
 import { db } from "@/lib/db";
 import {
-  COMMENT_GENERIC_ERROR,
   COMMENT_GENERIC_SUCCESS,
   checkCooldown,
   checkRateLimit,
@@ -79,7 +79,7 @@ export async function POST(
     select: { id: true },
   });
   if (!article) {
-    return commentErrorResponse(404, COMMENT_GENERIC_ERROR);
+    return commentErrorResponse("article_not_found");
   }
 
   // 1. 解析访客身份（必要时写 cookie）
@@ -97,42 +97,42 @@ export async function POST(
   try {
     raw = await req.json();
   } catch {
-    return commentErrorResponse(400, COMMENT_GENERIC_ERROR);
+    return commentErrorResponse("invalid_json");
   }
   const parsed = commentBodySchema.safeParse(raw);
   if (!parsed.success) {
-    return commentErrorResponse(400, COMMENT_GENERIC_ERROR);
+    return commentErrorResponse("schema_invalid");
   }
   const captchaToken = parsed.data.captchaToken ?? "";
 
   // 3. 验证码（在封禁/冷却/限流之前，避免被恶意探测消耗资源）
   const captchaResult = await verifyCaptcha(captchaToken, req);
   if (!captchaResult.success) {
-    return commentErrorResponse(400, COMMENT_GENERIC_ERROR);
+    return commentErrorResponse("captcha_failed");
   }
 
   // 4. 封禁检查：处于封禁状态的访客直接返回通用错误
   const ban = await checkBan(identity.ipHmac, identity.tokenHash);
   if (ban) {
-    return commentErrorResponse(403, COMMENT_GENERIC_ERROR);
+    return commentErrorResponse("visitor_banned");
   }
 
   // 5. 冷却
   const cooldown = await checkCooldown(identity.ipHmac, identity.tokenHash);
   if (cooldown.coolingDown) {
-    return commentErrorResponse(429, COMMENT_GENERIC_ERROR, cooldown.retryAfterSec);
+    return commentErrorResponse("cooldown");
   }
 
   // 6. 限流
   const rate = await checkRateLimit(identity.ipHmac);
   if (rate.limited) {
-    return commentErrorResponse(429, COMMENT_GENERIC_ERROR, rate.retryAfterSec);
+    return commentErrorResponse("rate_limited");
   }
 
   // 7. 长度校验 + 文本清洗
   const validated = await validateAndSanitize(parsed.data.bodyText);
   if (!validated.ok) {
-    return commentErrorResponse(400, COMMENT_GENERIC_ERROR);
+    return commentErrorResponse("content_invalid");
   }
 
   // 8. 正则规则
@@ -249,7 +249,7 @@ export async function POST(
     await recordSubmit(identity.ipHmac, identity.tokenHash);
   } catch (error) {
     console.error("[comments] submit failed", error);
-    return commentErrorResponse(500, COMMENT_GENERIC_ERROR);
+    return commentErrorResponse("persist_failed");
   }
 
   // 11. LLM reject 之后增加访客警告

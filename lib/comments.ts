@@ -329,20 +329,17 @@ export async function listApprovedComments(articleId: string) {
 }
 
 /**
- * 通用错误响应辅助。统一文案，不区分原因。
+ * 对外统一的失败响应：固定 HTTP 200 + 通用文案。
+ * 安全审查 P1.2：403/429/400/404 的状态差异会被调用方用来枚举
+ * "被封禁/被限流/参数错"等内部状态，故状态码不再携带语义。
+ * 真实原因只写服务端日志（console.warn），不发给调用方。
  */
-export function commentErrorResponse(
-  status: number,
-  error: string,
-  retryAfterSec?: number
-): Response {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (retryAfterSec !== undefined) {
-    headers["Retry-After"] = String(retryAfterSec);
-  }
-  return new Response(JSON.stringify({ error }), { status, headers });
+export function commentErrorResponse(reason: string): Response {
+  console.warn(`[comments] submit rejected: ${reason}`);
+  return new Response(JSON.stringify({ error: COMMENT_GENERIC_ERROR }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 export const COMMENT_GENERIC_ERROR = "评论提交失败，请稍后再试";
